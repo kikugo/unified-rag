@@ -102,6 +102,27 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
         st.error(f"Embedding error: {e}")
         return None
 
+def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = "image/png") -> np.ndarray | None:
+    """Embed an image interleaved with a text caption as one unified vector.
+    Produces richer embeddings than image-only when caption provides useful context.
+    """
+    dim = st.session_state.get("embedding_dim", 3072)
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-2-preview",
+            contents=types.Content(
+                parts=[
+                    types.Part(text=caption),
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ]
+            ),
+            config=types.EmbedContentConfig(output_dimensionality=dim),
+        )
+        return np.array(result.embeddings[0].values)
+    except Exception as e:
+        st.error(f"Embedding error: {e}")
+        return None
+
 def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     """Embed a single PDF chunk (max 6 pages) using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
@@ -292,6 +313,12 @@ if st.button("Load Sample Images", key="load_samples_btn"):
 st.markdown("---")
 st.subheader("📤 Upload Files")
 
+image_caption = st.text_input(
+    "Optional caption for uploaded images",
+    placeholder="e.g. Tesla Q4 2024 earnings slide — embeds text + image together for better retrieval",
+    key="image_caption",
+)
+
 uploaded_files = st.file_uploader(
     "Upload images, PDFs, audio, or video files",
     type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
@@ -343,11 +370,15 @@ if uploaded_files:
                         "mime": mime,
                     })
             else:
-                emb = embed_image(file_bytes, mime_type=mime)
+                if image_caption:
+                    emb = embed_image_with_caption(file_bytes, caption=image_caption, mime_type=mime)
+                else:
+                    emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:
+                    label = f"{file.name} · {image_caption}" if image_caption else file.name
                     st.session_state.doc_embeddings.append(emb)
                     st.session_state.doc_sources.append({
-                        "name": file.name,
+                        "name": label,
                         "type": "image",
                         "bytes": file_bytes,
                         "mime": mime,

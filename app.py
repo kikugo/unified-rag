@@ -10,11 +10,53 @@ st.set_page_config(page_title="Unified RAG", layout="wide")
 st.title("Unified RAG 🔍")
 st.caption("Multimodal search powered by Gemini Embedding 2")
 
-# sidebar: api key
+# session state — must be before sidebar renders
+if "doc_embeddings" not in st.session_state:
+    st.session_state.doc_embeddings = []
+if "doc_sources" not in st.session_state:
+    st.session_state.doc_sources = []
+if "active_dim" not in st.session_state:
+    st.session_state.active_dim = 3072
+
+# sidebar
 with st.sidebar:
     st.header("🔑 API Key")
     google_api_key = st.text_input("Google API Key", type="password", key="google_key")
     "[Get a Google API key](https://aistudio.google.com/app/apikey)"
+
+    st.markdown("---")
+    st.subheader("⚙️ Settings")
+    st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
+
+    # auto-clear if dimension changed with docs loaded
+    if st.session_state.embedding_dim != st.session_state.active_dim:
+        if st.session_state.doc_sources:
+            st.session_state.doc_embeddings = []
+            st.session_state.doc_sources = []
+            st.toast("Dimension changed — documents cleared. Re-upload to re-embed.", icon="⚠️")
+        st.session_state.active_dim = st.session_state.embedding_dim
+
+    st.markdown("---")
+    doc_count = len(st.session_state.doc_sources)
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.caption(f"📚 {doc_count} document(s) loaded")
+    with c2:
+        if st.button("🗑️", key="clear_btn", disabled=doc_count == 0, help="Clear all"):
+            st.session_state.doc_embeddings = []
+            st.session_state.doc_sources = []
+            st.rerun()
+
+    for i, src in enumerate(st.session_state.doc_sources):
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            icon = "📄" if src["type"] == "pdf" else "🖼️"
+            st.caption(f"{icon} {src['name']}")
+        with c2:
+            if st.button("✕", key=f"rm_{i}", help=f"Remove {src['name']}"):
+                st.session_state.doc_embeddings.pop(i)
+                st.session_state.doc_sources.pop(i)
+                st.rerun()
 
 # init client
 client = None
@@ -25,14 +67,18 @@ else:
     st.info("Enter your Google API key in the sidebar to get started.")
     st.stop()
 
-# embedding helper
+# embedding helpers
 def embed_text(text: str) -> np.ndarray | None:
     """Embed a text string using Gemini Embedding 2."""
+    dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=text,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality=dim,
+            ),
         )
         return np.array(result.embeddings[0].values)
     except Exception as e:
@@ -41,12 +87,14 @@ def embed_text(text: str) -> np.ndarray | None:
 
 def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray | None:
     """Embed an image using Gemini Embedding 2."""
+    dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             ],
+            config=types.EmbedContentConfig(output_dimensionality=dim),
         )
         return np.array(result.embeddings[0].values)
     except Exception as e:
@@ -55,12 +103,14 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
 
 def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     """Embed a single PDF chunk (max 6 pages) using Gemini Embedding 2."""
+    dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=[
                 types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
             ],
+            config=types.EmbedContentConfig(output_dimensionality=dim),
         )
         return [np.array(e.values) for e in result.embeddings]
     except Exception as e:
@@ -97,11 +147,15 @@ def search(query: str, top_k: int = 3) -> list[dict]:
     """Embed query and return top-K most similar docs with scores."""
     if not st.session_state.doc_embeddings:
         return []
+    dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=query,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_QUERY",
+                output_dimensionality=dim,
+            ),
         )
         query_emb = np.array(result.embeddings[0].values)
     except Exception as e:
@@ -132,11 +186,7 @@ def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
     except Exception as e:
         return f"Generation error: {e}"
 
-# session state
-if "doc_embeddings" not in st.session_state:
-    st.session_state.doc_embeddings = []  # list of np.ndarray
-if "doc_sources" not in st.session_state:
-    st.session_state.doc_sources = []  # list of dicts: {name, type, bytes, mime}
+
 
 # main ui
 st.markdown("---")
@@ -150,10 +200,9 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    new_files = [
-        f for f in uploaded_files
-        if f.name not in [s["name"] for s in st.session_state.doc_sources]
-    ]
+    # for PDFs, stored names have " · pages X-Y" suffix — match by base filename
+    loaded_base_names = {s["name"].split(" · ")[0] for s in st.session_state.doc_sources}
+    new_files = [f for f in uploaded_files if f.name not in loaded_base_names]
 
     if new_files:
         progress = st.progress(0, text="Embedding files...")
@@ -191,10 +240,7 @@ if uploaded_files:
     else:
         st.info("All uploaded files are already loaded.")
 
-# show loaded docs count in sidebar
-with st.sidebar:
-    st.markdown("---")
-    st.caption(f"📚 {len(st.session_state.doc_sources)} document(s) loaded")
+
 
 st.markdown("---")
 st.subheader("🔍 Search")

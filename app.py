@@ -422,6 +422,63 @@ else:
         else:
             st.warning("No results found.")
 
+# image-as-query search
+st.markdown("---")
+st.subheader("🖼️ Search by Image")
+st.caption("Upload an image as your query — Gemini Embedding 2 will find the most visually and semantically similar content in your library.")
+
+if not st.session_state.doc_sources:
+    st.warning("Upload at least one file to your library first.")
+else:
+    query_image = st.file_uploader(
+        "Upload a query image",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+        key="image_query_uploader",
+        label_visibility="collapsed",
+    )
+    top_k_img = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k_img")
+
+    if query_image and st.button("Find Similar", key="img_search_btn"):
+        query_bytes = query_image.read()
+        query_mime = query_image.type
+        dim = st.session_state.get("embedding_dim", 3072)
+
+        with st.spinner("Embedding query image..."):
+            try:
+                result = client.models.embed_content(
+                    model="gemini-embedding-2-preview",
+                    contents=[types.Part.from_bytes(data=query_bytes, mime_type=query_mime)],
+                    config=types.EmbedContentConfig(
+                        task_type="RETRIEVAL_QUERY",
+                        output_dimensionality=dim,
+                    ),
+                )
+                query_emb = np.array(result.embeddings[0].values)
+            except Exception as e:
+                st.error(f"Query embedding error: {e}")
+                query_emb = None
+
+        if query_emb is not None:
+            scores = [cosine_similarity(query_emb, doc_emb) for doc_emb in st.session_state.doc_embeddings]
+            top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k_img]
+            img_results = [{**st.session_state.doc_sources[i], "score": scores[i]} for i in top_indices]
+
+            st.markdown(f"**Top {len(img_results)} result(s) for your query image:**")
+            cols = st.columns(len(img_results))
+            for col, res in zip(cols, img_results):
+                with col:
+                    if res["type"] == "image":
+                        st.image(res["bytes"], use_container_width=True)
+                    elif res["type"] == "audio":
+                        st.audio(res["bytes"], format=res["mime"])
+                    elif res["type"] == "video":
+                        st.video(res["bytes"])
+                    else:
+                        st.markdown("📄 PDF")
+                    st.caption(f"**{res['name']}**")
+                    st.caption(f"Score: `{res['score']:.4f}`")
+
 # footer
 st.markdown("---")
 st.caption("Unified RAG · Powered by Gemini Embedding 2 and Gemini 2.5 Flash")

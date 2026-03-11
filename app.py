@@ -24,6 +24,7 @@ with st.sidebar:
     st.header("🔑 API Key")
     google_api_key = st.text_input("Google API Key", type="password", key="google_key")
     "[Get a Google API key](https://aistudio.google.com/app/apikey)"
+    st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
 
     st.markdown("---")
     st.subheader("⚙️ Settings")

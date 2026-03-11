@@ -1,5 +1,7 @@
+import io
 import streamlit as st
 import numpy as np
+import pypdf
 from google import genai
 from google.genai import types
 
@@ -52,7 +54,7 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
         return None
 
 def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
-    """Embed a PDF using Gemini Embedding 2 (up to 6 pages per call)."""
+    """Embed a single PDF chunk (max 6 pages) using Gemini Embedding 2."""
     try:
         result = client.models.embed_content(
             model="gemini-embedding-2-preview",
@@ -64,6 +66,29 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     except Exception as e:
         st.error(f"PDF embedding error: {e}")
         return []
+
+def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:
+    """Split a PDF into chunks of up to chunk_size pages.
+    Returns a list of (chunk_bytes, page_range_label) tuples.
+    """
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    total_pages = len(reader.pages)
+    chunks = []
+
+    for start in range(0, total_pages, chunk_size):
+        end = min(start + chunk_size, total_pages)
+        writer = pypdf.PdfWriter()
+        for page_num in range(start, end):
+            writer.add_page(reader.pages[page_num])
+
+        buf = io.BytesIO()
+        writer.write(buf)
+        chunk_bytes = buf.getvalue()
+
+        label = f"pages {start + 1}–{end}" if total_pages > chunk_size else f"page {'1' if total_pages == 1 else f'1–{total_pages}'}"
+        chunks.append((chunk_bytes, label))
+
+    return chunks
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
@@ -137,15 +162,17 @@ if uploaded_files:
             mime = file.type  # e.g. "image/png" or "application/pdf"
 
             if mime == "application/pdf":
-                embeddings = embed_pdf(file_bytes)
-                for idx, emb in enumerate(embeddings):
-                    st.session_state.doc_embeddings.append(emb)
-                    st.session_state.doc_sources.append({
-                        "name": f"{file.name} · page {idx + 1}",
-                        "type": "pdf",
-                        "bytes": file_bytes,
-                        "mime": mime,
-                    })
+                chunks = chunk_pdf(file_bytes)
+                for chunk_bytes, page_label in chunks:
+                    embeddings = embed_pdf(chunk_bytes)
+                    for emb in embeddings:
+                        st.session_state.doc_embeddings.append(emb)
+                        st.session_state.doc_sources.append({
+                            "name": f"{file.name} · {page_label}",
+                            "type": "pdf",
+                            "bytes": chunk_bytes,
+                            "mime": mime,
+                        })
             else:
                 emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:

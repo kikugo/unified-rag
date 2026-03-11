@@ -68,7 +68,70 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
+# session state
+if "doc_embeddings" not in st.session_state:
+    st.session_state.doc_embeddings = []  # list of np.ndarray
+if "doc_sources" not in st.session_state:
+    st.session_state.doc_sources = []  # list of dicts: {name, type, bytes, mime}
+
 # main ui
 st.markdown("---")
-st.subheader("📤 Upload a file to get started")
-st.info("Image, PDF support coming next — embedding layer is ready.")
+st.subheader("📤 Upload Files")
+
+uploaded_files = st.file_uploader(
+    "Upload images or PDFs",
+    type=["png", "jpg", "jpeg", "pdf"],
+    accept_multiple_files=True,
+    label_visibility="collapsed",
+)
+
+if uploaded_files:
+    new_files = [
+        f for f in uploaded_files
+        if f.name not in [s["name"] for s in st.session_state.doc_sources]
+    ]
+
+    if new_files:
+        progress = st.progress(0, text="Embedding files...")
+        for i, file in enumerate(new_files):
+            file_bytes = file.read()
+            mime = file.type  # e.g. "image/png" or "application/pdf"
+
+            if mime == "application/pdf":
+                embeddings = embed_pdf(file_bytes)
+                for idx, emb in enumerate(embeddings):
+                    st.session_state.doc_embeddings.append(emb)
+                    st.session_state.doc_sources.append({
+                        "name": f"{file.name} · page {idx + 1}",
+                        "type": "pdf",
+                        "bytes": file_bytes,
+                        "mime": mime,
+                    })
+            else:
+                emb = embed_image(file_bytes, mime_type=mime)
+                if emb is not None:
+                    st.session_state.doc_embeddings.append(emb)
+                    st.session_state.doc_sources.append({
+                        "name": file.name,
+                        "type": "image",
+                        "bytes": file_bytes,
+                        "mime": mime,
+                    })
+
+            progress.progress((i + 1) / len(new_files), text=f"Embedded {file.name}")
+
+        progress.empty()
+        st.success(f"Added {len(new_files)} file(s). Total docs: {len(st.session_state.doc_sources)}")
+    else:
+        st.info("All uploaded files are already loaded.")
+
+# show loaded docs count in sidebar
+with st.sidebar:
+    st.markdown("---")
+    st.caption(f"📚 {len(st.session_state.doc_sources)} document(s) loaded")
+
+st.markdown("---")
+if not st.session_state.doc_sources:
+    st.warning("Upload at least one file to start searching.")
+else:
+    st.info(f"{len(st.session_state.doc_sources)} document chunk(s) ready. Search coming next.")

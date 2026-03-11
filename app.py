@@ -293,8 +293,8 @@ st.markdown("---")
 st.subheader("📤 Upload Files")
 
 uploaded_files = st.file_uploader(
-    "Upload images, PDFs, or audio files",
-    type=["png", "jpg", "jpeg", "pdf", "mp3", "wav"],
+    "Upload images, PDFs, audio, or video files",
+    type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
     accept_multiple_files=True,
     label_visibility="collapsed",
 )
@@ -332,6 +332,16 @@ if uploaded_files:
                         "bytes": file_bytes,
                         "mime": mime,
                     })
+            elif mime in ("video/mp4", "video/quicktime"):
+                emb = embed_video(file_bytes, mime_type=mime)
+                if emb is not None:
+                    st.session_state.doc_embeddings.append(emb)
+                    st.session_state.doc_sources.append({
+                        "name": file.name,
+                        "type": "video",
+                        "bytes": file_bytes,
+                        "mime": mime,
+                    })
             else:
                 emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:
@@ -360,6 +370,8 @@ if st.session_state.doc_sources:
                     st.image(src["bytes"], use_container_width=True)
                 elif src["type"] == "audio":
                     st.audio(src["bytes"], format=src["mime"])
+                elif src["type"] == "video":
+                    st.markdown("🎥")
                 else:
                     st.markdown("📄")
                 st.caption(src["name"])
@@ -392,6 +404,8 @@ else:
                         st.image(res["bytes"], use_container_width=True)
                     elif res["type"] == "audio":
                         st.audio(res["bytes"], format=res["mime"])
+                    elif res["type"] == "video":
+                        st.video(res["bytes"])
                     else:
                         st.markdown("📄 PDF")
                     st.caption(f"**{res['name']}**")

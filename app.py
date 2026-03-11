@@ -1,4 +1,5 @@
 import io
+import requests
 import streamlit as st
 import numpy as np
 import pypdf
@@ -117,6 +118,8 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         st.error(f"PDF embedding error: {e}")
         return []
 
+
+
 def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:
     """Split a PDF into chunks of up to chunk_size pages.
     Returns a list of (chunk_bytes, page_range_label) tuples.
@@ -186,7 +189,72 @@ def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
     except Exception as e:
         return f"Generation error: {e}"
 
+SAMPLE_IMAGES = {
+    "Tesla Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fbef936e6-3efa-43b3-88d7-7ec620cdb33b_2744x1539.png",
+    "Netflix Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F23bd84c9-5b62-4526-b467-3088e27e4193_2744x1539.png",
+    "Nike Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fa5cd33ba-ae1a-42a8-a254-d85e690d9870_2741x1541.png",
+    "Google Q4 2024": "https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F395dd3b9-b38e-4d1f-91bc-d37b642ee920_2741x1541.png",
+    "Accenture Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F08b2227c-7dc8-49f7-b3c5-13cab5443ba6_2741x1541.png",
+    "Tencent Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F0ec8448c-c4d1-4aab-a8e9-2ddebe0c95fd_2741x1541.png",
+}
 
+def load_sample_images():
+    """Download sample financial chart images and embed them into session state."""
+    loaded_base_names = {s["name"].split(" · ")[0] for s in st.session_state.doc_sources}
+    to_load = {name: url for name, url in SAMPLE_IMAGES.items() if name not in loaded_base_names}
+
+    if not to_load:
+        st.info("Sample images already loaded.")
+        return
+
+    progress = st.progress(0, text="Loading sample images...")
+    for i, (name, url) in enumerate(to_load.items()):
+        progress.progress(i / len(to_load), text=f"Downloading {name}...")
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            img_bytes = resp.content
+            mime = "image/png"
+
+            progress.progress(i / len(to_load), text=f"Embedding {name}...")
+            emb = embed_image(img_bytes, mime_type=mime)
+            if emb is not None:
+                st.session_state.doc_embeddings.append(emb)
+                st.session_state.doc_sources.append({
+                    "name": name,
+                    "type": "image",
+                    "bytes": img_bytes,
+                    "mime": mime,
+                })
+        except Exception as e:
+            st.warning(f"Could not load {name}: {e}")
+
+    progress.progress(1.0, text="Done!")
+    progress.empty()
+    st.success(f"Loaded {len(to_load)} sample image(s).")
+
+# about expander
+with st.expander("ℹ️ About this app"):
+    st.markdown("""
+    **Unified RAG** uses **Gemini Embedding 2** (`gemini-embedding-2-preview`) to embed your content
+    into a single unified vector space, and **Gemini 2.5 Flash** to generate answers from retrieved content.
+
+    **Supported content:**
+    - 🖼️ Images (PNG, JPG)
+    - 📄 PDFs (any length — auto-chunked into 6-page segments)
+    - 🎧 Audio (MP3, WAV) — *coming soon*
+    - 🎥 Video (MP4, MOV) — *coming soon*
+
+    **How it works:** Upload content → Gemini Embedding 2 vectorizes it → your question is
+    embedded and scored against all vectors via cosine similarity → top result is passed to
+    Gemini Flash for a grounded answer.
+    """)
+
+st.markdown("---")
+st.subheader("📊 Load Sample Images")
+st.caption("Try the app instantly with pre-loaded financial charts from Tesla, Netflix, Nike, Google, Accenture, and Tencent.")
+if st.button("Load Sample Images", key="load_samples_btn"):
+    load_sample_images()
 
 # main ui
 st.markdown("---")
@@ -240,6 +308,18 @@ if uploaded_files:
     else:
         st.info("All uploaded files are already loaded.")
 
+# loaded content gallery
+if st.session_state.doc_sources:
+    with st.expander(f"View Loaded Content ({len(st.session_state.doc_sources)} items)", expanded=False):
+        cols = st.columns(5)
+        for i, src in enumerate(st.session_state.doc_sources):
+            with cols[i % 5]:
+                if src["type"] == "image":
+                    st.image(src["bytes"], use_container_width=True)
+                else:
+                    st.markdown("📄")
+                st.caption(src["name"])
+
 
 
 st.markdown("---")
@@ -264,7 +344,10 @@ else:
             cols = st.columns(len(results))
             for col, res in zip(cols, results):
                 with col:
-                    st.image(res["bytes"], use_container_width=True)
+                    if res["type"] == "image":
+                        st.image(res["bytes"], use_container_width=True)
+                    else:
+                        st.markdown("📄 PDF")
                     st.caption(f"**{res['name']}**")
                     st.caption(f"Score: `{res['score']:.4f}`")
 
@@ -278,3 +361,7 @@ else:
             st.caption(f"Answer based on: **{top['name']}** (score: `{top['score']:.4f}`)")        
         else:
             st.warning("No results found.")
+
+# footer
+st.markdown("---")
+st.caption("Unified RAG · Powered by Gemini Embedding 2 and Gemini 2.5 Flash")

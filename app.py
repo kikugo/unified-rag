@@ -268,7 +268,7 @@ def load_sample_images():
             resp = requests.get(url, timeout=15)
             resp.raise_for_status()
             img_bytes = resp.content
-            mime = "image/png"
+            mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
 
             progress.progress(i / len(to_load), text=f"Embedding {name}...")
             emb = embed_image(img_bytes, mime_type=mime)
@@ -399,7 +399,7 @@ if st.session_state.doc_sources:
         for i, src in enumerate(st.session_state.doc_sources):
             with cols[i % 5]:
                 if src["type"] == "image":
-                    st.image(src["bytes"], use_container_width=True)
+                    st.image(src["bytes"], width='stretch')
                 elif src["type"] == "audio":
                     st.audio(src["bytes"], format=src["mime"])
                 elif src["type"] == "video":
@@ -433,7 +433,7 @@ else:
             for col, res in zip(cols, results):
                 with col:
                     if res["type"] == "image":
-                        st.image(res["bytes"], use_container_width=True)
+                        st.image(res["bytes"], width='stretch')
                     elif res["type"] == "audio":
                         st.audio(res["bytes"], format=res["mime"])
                     elif res["type"] == "video":
@@ -501,7 +501,7 @@ else:
             for col, res in zip(cols, img_results):
                 with col:
                     if res["type"] == "image":
-                        st.image(res["bytes"], use_container_width=True)
+                        st.image(res["bytes"], width='stretch')
                     elif res["type"] == "audio":
                         st.audio(res["bytes"], format=res["mime"])
                     elif res["type"] == "video":

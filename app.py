@@ -93,6 +93,20 @@ def search(query: str, top_k: int = 3) -> list[dict]:
         for i in top_indices
     ]
 
+def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
+    """Pass the top retrieved image + question to Gemini 2.5 Flash for an answer."""
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                question,
+            ],
+        )
+        return response.text
+    except Exception as e:
+        return f"Generation error: {e}"
+
 # session state
 if "doc_embeddings" not in st.session_state:
     st.session_state.doc_embeddings = []  # list of np.ndarray
@@ -168,7 +182,7 @@ else:
     )
     top_k = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k")
 
-    if st.button("Search", key="search_btn", disabled=not query):
+    if st.button("Search & Answer", key="search_btn", disabled=not query):
         with st.spinner("Searching..."):
             results = search(query, top_k=top_k)
 
@@ -177,11 +191,17 @@ else:
             cols = st.columns(len(results))
             for col, res in zip(cols, results):
                 with col:
-                    if res["type"] == "image":
-                        st.image(res["bytes"], use_container_width=True)
-                    elif res["type"] == "pdf":
-                        st.image(res["bytes"], use_container_width=True)
+                    st.image(res["bytes"], use_container_width=True)
                     st.caption(f"**{res['name']}**")
                     st.caption(f"Score: `{res['score']:.4f}`")
+
+            # generate answer from top result
+            st.markdown("---")
+            st.subheader("💬 Answer")
+            top = results[0]
+            with st.spinner("Generating answer from top result..."):
+                generated = answer(query, top["bytes"], top["mime"])
+            st.markdown(generated)
+            st.caption(f"Answer based on: **{top['name']}** (score: `{top['score']:.4f}`)")        
         else:
             st.warning("No results found.")

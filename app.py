@@ -1,4 +1,5 @@
 import io
+import wave
 import requests
 import streamlit as st
 import numpy as np
@@ -141,8 +142,47 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         st.error(f"PDF embedding error: {e}")
         return []
 
+AUDIO_MAX_SECONDS = 80
+
+def trim_audio_to_limit(audio_bytes: bytes, mime_type: str, max_seconds: int = AUDIO_MAX_SECONDS) -> bytes:
+    """Trim audio to max_seconds. WAV: uses built-in wave module.
+    MP3: byte-based estimate (constant bitrate assumption).
+    Returns original bytes if already within limit.
+    """
+    if mime_type == "audio/wav":
+        try:
+            with wave.open(io.BytesIO(audio_bytes)) as wf:
+                framerate = wf.getframerate()
+                total_frames = wf.getnframes()
+                duration = total_frames / framerate
+                if duration <= max_seconds:
+                    return audio_bytes
+                max_frames = int(framerate * max_seconds)
+                wf.rewind()
+                params = wf.getparams()
+                frames = wf.readframes(max_frames)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as out:
+                out.setparams(params)
+                out.writeframes(frames)
+            return buf.getvalue()
+        except Exception:
+            return audio_bytes
+    elif mime_type == "audio/mp3":
+        # Rough trim by byte proportion (assumes constant bitrate)
+        # 128kbps CBR: ~16KB/s. Estimate duration from file size.
+        estimated_duration = len(audio_bytes) / 16_000
+        if estimated_duration <= max_seconds:
+            return audio_bytes
+        trim_ratio = max_seconds / estimated_duration
+        return audio_bytes[:int(len(audio_bytes) * trim_ratio)]
+    return audio_bytes
+
 def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
-    """Embed an audio file using Gemini Embedding 2 (max 80 seconds)."""
+    """Embed an audio file using Gemini Embedding 2 (max 80 seconds).
+    Automatically trims to 80s if the file is longer.
+    """
+    audio_bytes = trim_audio_to_limit(audio_bytes, mime_type)
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(

@@ -342,6 +342,8 @@ if st.session_state.doc_sources:
             with cols[i % 5]:
                 if src["type"] == "image":
                     st.image(src["bytes"], use_container_width=True)
+                elif src["type"] == "audio":
+                    st.audio(src["bytes"], format=src["mime"])
                 else:
                     st.markdown("📄")
                 st.caption(src["name"])
@@ -372,6 +374,8 @@ else:
                 with col:
                     if res["type"] == "image":
                         st.image(res["bytes"], use_container_width=True)
+                    elif res["type"] == "audio":
+                        st.audio(res["bytes"], format=res["mime"])
                     else:
                         st.markdown("📄 PDF")
                     st.caption(f"**{res['name']}**")

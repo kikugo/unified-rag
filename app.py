@@ -277,8 +277,8 @@ st.markdown("---")
 st.subheader("📤 Upload Files")
 
 uploaded_files = st.file_uploader(
-    "Upload images or PDFs",
-    type=["png", "jpg", "jpeg", "pdf"],
+    "Upload images, PDFs, or audio files",
+    type=["png", "jpg", "jpeg", "pdf", "mp3", "wav"],
     accept_multiple_files=True,
     label_visibility="collapsed",
 )
@@ -306,6 +306,16 @@ if uploaded_files:
                             "bytes": chunk_bytes,
                             "mime": mime,
                         })
+            elif mime in ("audio/mpeg", "audio/wav"):
+                emb = embed_audio(file_bytes, mime_type=mime)
+                if emb is not None:
+                    st.session_state.doc_embeddings.append(emb)
+                    st.session_state.doc_sources.append({
+                        "name": file.name,
+                        "type": "audio",
+                        "bytes": file_bytes,
+                        "mime": mime,
+                    })
             else:
                 emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:

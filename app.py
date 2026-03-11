@@ -118,6 +118,22 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         st.error(f"PDF embedding error: {e}")
         return []
 
+def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
+    """Embed an audio file using Gemini Embedding 2 (max 80 seconds)."""
+    dim = st.session_state.get("embedding_dim", 3072)
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-2-preview",
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+            ],
+            config=types.EmbedContentConfig(output_dimensionality=dim),
+        )
+        return np.array(result.embeddings[0].values)
+    except Exception as e:
+        st.error(f"Audio embedding error: {e}")
+        return None
+
 
 
 def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:

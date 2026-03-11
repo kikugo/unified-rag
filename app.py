@@ -3,6 +3,7 @@ import requests
 import streamlit as st
 import numpy as np
 import pypdf
+from PIL import Image
 from google import genai
 from google.genai import types
 
@@ -267,8 +268,13 @@ def load_sample_images():
         try:
             resp = requests.get(url, timeout=15)
             resp.raise_for_status()
-            img_bytes = resp.content
-            mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+            # Convert to PNG via Pillow — ensures a supported format regardless of what
+            # the CDN returns (WebP, JPEG, etc.). Pillow is already in requirements.txt.
+            raw = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            buf = io.BytesIO()
+            raw.save(buf, format="PNG")
+            img_bytes = buf.getvalue()
+            mime = "image/png"
 
             progress.progress(i / len(to_load), text=f"Embedding {name}...")
             emb = embed_image(img_bytes, mime_type=mime)

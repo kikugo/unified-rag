@@ -68,6 +68,31 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
+def search(query: str, top_k: int = 3) -> list[dict]:
+    """Embed query and return top-K most similar docs with scores."""
+    if not st.session_state.doc_embeddings:
+        return []
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-2-preview",
+            contents=query,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+        )
+        query_emb = np.array(result.embeddings[0].values)
+    except Exception as e:
+        st.error(f"Query embedding error: {e}")
+        return []
+
+    scores = [
+        cosine_similarity(query_emb, doc_emb)
+        for doc_emb in st.session_state.doc_embeddings
+    ]
+    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+    return [
+        {**st.session_state.doc_sources[i], "score": scores[i]}
+        for i in top_indices
+    ]
+
 # session state
 if "doc_embeddings" not in st.session_state:
     st.session_state.doc_embeddings = []  # list of np.ndarray
@@ -131,7 +156,32 @@ with st.sidebar:
     st.caption(f"📚 {len(st.session_state.doc_sources)} document(s) loaded")
 
 st.markdown("---")
+st.subheader("🔍 Search")
+
 if not st.session_state.doc_sources:
     st.warning("Upload at least one file to start searching.")
 else:
-    st.info(f"{len(st.session_state.doc_sources)} document chunk(s) ready. Search coming next.")
+    query = st.text_input(
+        "Ask a question about your documents:",
+        placeholder="e.g. What is the revenue trend?",
+        key="search_query",
+    )
+    top_k = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k")
+
+    if st.button("Search", key="search_btn", disabled=not query):
+        with st.spinner("Searching..."):
+            results = search(query, top_k=top_k)
+
+        if results:
+            st.markdown(f"**Top {len(results)} result(s) for:** *{query}*")
+            cols = st.columns(len(results))
+            for col, res in zip(cols, results):
+                with col:
+                    if res["type"] == "image":
+                        st.image(res["bytes"], use_container_width=True)
+                    elif res["type"] == "pdf":
+                        st.image(res["bytes"], use_container_width=True)
+                    st.caption(f"**{res['name']}**")
+                    st.caption(f"Score: `{res['score']:.4f}`")
+        else:
+            st.warning("No results found.")

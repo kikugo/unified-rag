@@ -356,8 +356,10 @@ if uploaded_files:
                             "bytes": chunk_bytes,
                             "mime": mime,
                         })
-            elif mime in ("audio/mpeg", "audio/wav"):
-                emb = embed_audio(file_bytes, mime_type=mime)
+            elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
+                # Gemini Embedding API expects "audio/mp3", not "audio/mpeg"
+                audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
+                emb = embed_audio(file_bytes, mime_type=audio_mime)
                 if emb is not None:
                     st.session_state.doc_embeddings.append(emb)
                     st.session_state.doc_sources.append({

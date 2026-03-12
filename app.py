@@ -1,4 +1,5 @@
 import io
+import struct
 import wave
 import requests
 import streamlit as st
@@ -91,6 +92,7 @@ def embed_text(text: str) -> np.ndarray | None:
 
 def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray | None:
     """Embed an image using Gemini Embedding 2."""
+    image_bytes = resize_image_if_needed(image_bytes, mime_type)
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
@@ -142,8 +144,70 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         st.error(f"PDF embedding error: {e}")
         return []
 
-AUDIO_MAX_SECONDS = 80
+# ── API limits ────────────────────────────────────────────────────────────────
 
+AUDIO_MAX_SECONDS = 80          # Gemini Embedding 2 hard limit for audio
+VIDEO_MAX_SECONDS = 80          # 80s for video-with-audio; 120s without — use conservative limit
+IMAGE_MAX_DIM = 4096            # Resize images above this dimension
+
+def get_video_duration_seconds(video_bytes: bytes) -> float | None:
+    """Parse MP4/MOV container (pure Python) to extract duration from mvhd box.
+    Returns duration in seconds, or None if parsing fails.
+    """
+    data = video_bytes
+    i = 0
+    while i + 8 <= len(data):
+        try:
+            box_size = struct.unpack('>I', data[i:i+4])[0]
+            box_type = data[i+4:i+8]
+        except struct.error:
+            break
+        if box_size < 8:
+            break
+        if box_type == b'moov':
+            j = i + 8
+            while j + 8 <= i + box_size:
+                try:
+                    inner_size = struct.unpack('>I', data[j:j+4])[0]
+                    inner_type = data[j+4:j+8]
+                except struct.error:
+                    break
+                if inner_type == b'mvhd' and inner_size >= 32:
+                    version = data[j+8]
+                    if version == 0:
+                        timescale = struct.unpack('>I', data[j+20:j+24])[0]
+                        duration  = struct.unpack('>I', data[j+24:j+28])[0]
+                    else:  # version 1 (64-bit timestamps)
+                        timescale = struct.unpack('>I', data[j+28:j+32])[0]
+                        duration  = struct.unpack('>Q', data[j+32:j+40])[0]
+                    return duration / timescale if timescale > 0 else None
+                if inner_size == 0:
+                    break
+                j += inner_size
+        if box_size == 0:
+            break
+        i += box_size
+    return None
+
+def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
+    """Resize an image that exceeds IMAGE_MAX_DIM using Pillow.
+    Preserves aspect ratio. Returns original bytes if already within limit.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        if max(w, h) <= IMAGE_MAX_DIM:
+            return image_bytes
+        ratio = IMAGE_MAX_DIM / max(w, h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        fmt = "JPEG" if mime_type in ("image/jpeg", "image/jpg") else "PNG"
+        img.save(buf, format=fmt)
+        return buf.getvalue()
+    except Exception:
+        return image_bytes
+
+# ── Audio limit helper ────────────────────────────────────────────────────────
 def trim_audio_to_limit(audio_bytes: bytes, mime_type: str, max_seconds: int = AUDIO_MAX_SECONDS) -> bytes:
     """Trim audio to max_seconds. WAV: uses built-in wave module.
     MP3: byte-based estimate (constant bitrate assumption).
@@ -339,11 +403,14 @@ with st.expander("ℹ️ About this app"):
     **Unified RAG** uses **Gemini Embedding 2** (`gemini-embedding-2-preview`) to embed your content
     into a single unified vector space, and **Gemini 2.5 Flash** to generate answers from retrieved content.
 
-    **Supported content:**
-    - 🖼️ Images (PNG, JPG)
-    - 📄 PDFs (any length — auto-chunked into 6-page segments)
-    - 🎧 Audio (MP3, WAV) — *coming soon*
-    - 🎥 Video (MP4, MOV) — *coming soon*
+    **Supported content and API limits:**
+
+    | Modality | Formats | Limit | Handling |
+    |---|---|---|---|
+    | Images | PNG, JPG | 4096px (auto-resized) | Auto |
+    | PDFs | PDF | 6 pages per call | Auto-chunked |
+    | Audio | MP3, WAV | 80 seconds | Auto-trimmed |
+    | Video | MP4, MOV | 80 seconds | Rejected with warning |
 
     **How it works:** Upload content → Gemini Embedding 2 vectorizes it → your question is
     embedded and scored against all vectors via cosine similarity → top result is passed to
@@ -409,15 +476,23 @@ if uploaded_files:
                         "mime": mime,
                     })
             elif mime in ("video/mp4", "video/quicktime"):
-                emb = embed_video(file_bytes, mime_type=mime)
-                if emb is not None:
-                    st.session_state.doc_embeddings.append(emb)
-                    st.session_state.doc_sources.append({
-                        "name": file.name,
-                        "type": "video",
-                        "bytes": file_bytes,
-                        "mime": mime,
-                    })
+                duration = get_video_duration_seconds(file_bytes)
+                if duration is not None and duration > VIDEO_MAX_SECONDS:
+                    st.warning(
+                        f"⏱️ **{file.name}** is {duration:.0f}s — the Gemini Embedding API "
+                        f"only supports videos up to {VIDEO_MAX_SECONDS}s. "
+                        f"Please trim your video to under {VIDEO_MAX_SECONDS} seconds and re-upload."
+                    )
+                else:
+                    emb = embed_video(file_bytes, mime_type=mime)
+                    if emb is not None:
+                        st.session_state.doc_embeddings.append(emb)
+                        st.session_state.doc_sources.append({
+                            "name": file.name,
+                            "type": "video",
+                            "bytes": file_bytes,
+                            "mime": mime,
+                        })
             else:
                 if image_caption:
                     emb = embed_image_with_caption(file_bytes, caption=image_caption, mime_type=mime)

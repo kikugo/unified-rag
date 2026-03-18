@@ -358,13 +358,14 @@ def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:
 
     return chunks
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
 def search(query: str, top_k: int = 3) -> list[dict]:
-    """Embed query and return top-K most similar docs with scores."""
-    if not st.session_state.doc_embeddings:
+    """Embed query and query ChromaDB for top-K results."""
+    try:
+        if chroma_collection.count() == 0:
+            return []
+    except Exception:
         return []
+
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
@@ -375,20 +376,41 @@ def search(query: str, top_k: int = 3) -> list[dict]:
                 output_dimensionality=dim,
             ),
         )
-        query_emb = np.array(result.embeddings[0].values)
+        query_emb = result.embeddings[0].values
     except Exception as e:
         st.error(f"Query embedding error: {e}")
         return []
 
-    scores = [
-        cosine_similarity(query_emb, doc_emb)
-        for doc_emb in st.session_state.doc_embeddings
-    ]
-    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
-    return [
-        {**st.session_state.doc_sources[i], "score": scores[i]}
-        for i in top_indices
-    ]
+    # Query Chroma
+    try:
+        results = chroma_collection.query(
+            query_embeddings=[query_emb],
+            n_results=min(top_k, chroma_collection.count())
+        )
+    except Exception as e:
+        st.error(f"Database query error: {e}")
+        return []
+    
+    # Format the results
+    out = []
+    if results and results.get("ids") and results["ids"][0]:
+        for i, doc_id in enumerate(results["ids"][0]):
+            meta = results["metadatas"][0][i]
+            dist = results["distances"][0][i] if "distances" in results and results["distances"] else 0.0
+            
+            # Reconstruct the file bytes from base64 stored in metadata
+            b64_data = meta.get("data_b64", "")
+            file_bytes = base64.b64decode(b64_data) if b64_data else b""
+            
+            out.append({
+                "id": doc_id,
+                "name": meta.get("name", "Unknown Document"),
+                "type": meta.get("type", "unknown"),
+                "mime": meta.get("mime", "application/octet-stream"),
+                "bytes": file_bytes,
+                "score": 1.0 - dist  # Chroma returns cosine distance; metric is 1 - similarity
+            })
+    return out
 
 def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
     """Pass the top retrieved image + question to Gemini 2.5 Flash for an answer."""

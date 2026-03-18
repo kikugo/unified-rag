@@ -24,6 +24,8 @@ if "doc_sources" not in st.session_state:
     st.session_state.doc_sources = []
 if "active_dim" not in st.session_state:
     st.session_state.active_dim = 3072
+if "google_store" not in st.session_state:
+    st.session_state.google_store = None
 
 # sidebar
 with st.sidebar:
@@ -34,6 +36,14 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⚙️ Settings")
+    
+    retrieval_strategy = st.radio(
+        "Retrieval Strategy",
+        ["Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
+        help="Choose whether to embed and search files locally, or upload them to Google's managed infrastructure.",
+        key="retrieval_strategy"
+    )
+    
     st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
     
     with st.expander("Advanced Vector Storage (ChromaDB)", expanded=False):
@@ -59,6 +69,12 @@ with st.sidebar:
         if st.button("🗑️", key="clear_btn", disabled=doc_count == 0, help="Clear all"):
             st.session_state.doc_embeddings = []
             st.session_state.doc_sources = []
+            if st.session_state.google_store is not None and client is not None:
+                try:
+                    client.file_search_stores.delete(name=st.session_state.google_store.name, config={'force': True})
+                except Exception:
+                    pass
+                st.session_state.google_store = None
             st.rerun()
 
     for i, src in enumerate(st.session_state.doc_sources):
@@ -105,6 +121,18 @@ try:
 except Exception as e:
     st.error(f"Failed to initialize ChromaDB: {e}")
     st.stop()
+
+# Google File Search helper
+def get_or_create_google_store():
+    """Create an ephemeral Google File Search store on-demand to avoid empty cloud resources."""
+    if st.session_state.google_store is None:
+        try:
+            st.session_state.google_store = client.file_search_stores.create(
+                config={'display_name': 'unified-rag-ephemeral-store'}
+            )
+        except Exception as e:
+            st.error(f"Failed to create Google File Search Store: {e}")
+    return st.session_state.google_store
 
 # embedding helpers
 def embed_text(text: str) -> np.ndarray | None:

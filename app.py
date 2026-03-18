@@ -5,6 +5,8 @@ import requests
 import streamlit as st
 import numpy as np
 import pypdf
+import base64
+import uuid
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -311,6 +313,28 @@ def embed_video(video_bytes: bytes, mime_type: str) -> np.ndarray | None:
 
 
 
+def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes):
+    """Helper to add an embedding to ChromaDB and session state."""
+    doc_id = str(uuid.uuid4())
+    try:
+        b64_data = base64.b64encode(file_bytes).decode('utf-8')
+        chroma_collection.upsert(
+            ids=[doc_id],
+            embeddings=[emb.tolist()],
+            metadatas=[{"name": name, "type": doc_type, "mime": mime, "data_b64": b64_data}]
+        )
+        # Keep in session state for UI rendering and temporary search fallback (until Commit 4)
+        st.session_state.doc_embeddings.append(emb)
+        st.session_state.doc_sources.append({
+            "id": doc_id,
+            "name": name,
+            "type": doc_type,
+            "bytes": file_bytes,
+            "mime": mime,
+        })
+    except Exception as e:
+        st.error(f"Error saving to database: {e}")
+
 def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:
     """Split a PDF into chunks of up to chunk_size pages.
     Returns a list of (chunk_bytes, page_range_label) tuples.
@@ -415,13 +439,7 @@ def load_sample_images():
             progress.progress(i / len(to_load), text=f"Embedding {name}...")
             emb = embed_image(img_bytes, mime_type=mime)
             if emb is not None:
-                st.session_state.doc_embeddings.append(emb)
-                st.session_state.doc_sources.append({
-                    "name": name,
-                    "type": "image",
-                    "bytes": img_bytes,
-                    "mime": mime,
-                })
+                add_document(emb, name, "image", mime, img_bytes)
         except Exception as e:
             st.warning(f"Could not load {name}: {e}")
 
@@ -488,25 +506,13 @@ if uploaded_files:
                 for chunk_bytes, page_label in chunks:
                     embeddings = embed_pdf(chunk_bytes)
                     for emb in embeddings:
-                        st.session_state.doc_embeddings.append(emb)
-                        st.session_state.doc_sources.append({
-                            "name": f"{file.name} · {page_label}",
-                            "type": "pdf",
-                            "bytes": chunk_bytes,
-                            "mime": mime,
-                        })
+                        add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes)
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
                 # Gemini Embedding API expects "audio/mp3", not "audio/mpeg"
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
                 emb = embed_audio(file_bytes, mime_type=audio_mime)
                 if emb is not None:
-                    st.session_state.doc_embeddings.append(emb)
-                    st.session_state.doc_sources.append({
-                        "name": file.name,
-                        "type": "audio",
-                        "bytes": file_bytes,
-                        "mime": mime,
-                    })
+                    add_document(emb, file.name, "audio", mime, file_bytes)
             elif mime in ("video/mp4", "video/quicktime"):
                 duration = get_video_duration_seconds(file_bytes)
                 if duration is not None and duration > VIDEO_MAX_SECONDS:
@@ -518,13 +524,7 @@ if uploaded_files:
                 else:
                     emb = embed_video(file_bytes, mime_type=mime)
                     if emb is not None:
-                        st.session_state.doc_embeddings.append(emb)
-                        st.session_state.doc_sources.append({
-                            "name": file.name,
-                            "type": "video",
-                            "bytes": file_bytes,
-                            "mime": mime,
-                        })
+                        add_document(emb, file.name, "video", mime, file_bytes)
             else:
                 if image_caption:
                     emb = embed_image_with_caption(file_bytes, caption=image_caption, mime_type=mime)
@@ -532,13 +532,7 @@ if uploaded_files:
                     emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:
                     label = f"{file.name} · {image_caption}" if image_caption else file.name
-                    st.session_state.doc_embeddings.append(emb)
-                    st.session_state.doc_sources.append({
-                        "name": label,
-                        "type": "image",
-                        "bytes": file_bytes,
-                        "mime": mime,
-                    })
+                    add_document(emb, label, "image", mime, file_bytes)
 
             progress.progress((i + 1) / len(new_files), text=f"Embedded {file.name}")
 

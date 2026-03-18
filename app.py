@@ -8,6 +8,7 @@ import pypdf
 from PIL import Image
 from google import genai
 from google.genai import types
+import chromadb
 
 # page config
 st.set_page_config(page_title="Unified RAG", layout="wide")
@@ -76,6 +77,31 @@ if google_api_key:
     st.sidebar.success("Client ready!")
 else:
     st.info("Enter your Google API key in the sidebar to get started.")
+    st.stop()
+
+# init chroma client
+@st.cache_resource
+def get_chroma_client(tenant: str, database: str, api_key: str):
+    if tenant and database and api_key:
+        return chromadb.HttpClient(
+            tenant=tenant,
+            database=database,
+            headers={"x-chroma-token": api_key}
+        )
+    return chromadb.PersistentClient(path="./chroma_db")
+
+try:
+    chroma_tenant = st.session_state.get("chroma_tenant", "")
+    chroma_database = st.session_state.get("chroma_database", "")
+    chroma_api_key = st.session_state.get("chroma_api_key", "")
+    
+    chroma_client = get_chroma_client(chroma_tenant, chroma_database, chroma_api_key)
+    chroma_collection = chroma_client.get_or_create_collection(
+        name="unified_rag",
+        metadata={"hnsw:space": "cosine"}
+    )
+except Exception as e:
+    st.error(f"Failed to initialize ChromaDB: {e}")
     st.stop()
 
 # embedding helpers

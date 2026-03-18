@@ -32,6 +32,12 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ Settings")
     st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
+    
+    with st.expander("Advanced Vector Storage (ChromaDB)", expanded=False):
+        st.caption("Leave blank to use a local, embedded database.")
+        st.text_input("Chroma Tenant", value="", key="chroma_tenant")
+        st.text_input("Chroma Database", value="", key="chroma_database")
+        st.text_input("Chroma API Key", type="password", key="chroma_api_key")
 
     # auto-clear if dimension changed with docs loaded
     if st.session_state.embedding_dim != st.session_state.active_dim:

@@ -7,6 +7,8 @@ import numpy as np
 import pypdf
 import base64
 import uuid
+import tempfile
+import os
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -133,6 +135,38 @@ def get_or_create_google_store():
         except Exception as e:
             st.error(f"Failed to create Google File Search Store: {e}")
     return st.session_state.google_store
+
+def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str):
+    """Save bytes to a temp file, upload directly to the managed Google File Search store."""
+    store = get_or_create_google_store()
+    if not store:
+        return
+        
+    ext = os.path.splitext(file_name)[1]
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+        
+    try:
+        # Directly upload to the file search store
+        client.file_search_stores.upload_to_file_search_store(
+            file=tmp_path,
+            file_search_store_name=store.name,
+            config={'display_name': file_name}
+        )
+        # Add to UI state so it shows in the gallery
+        doc_type = "pdf" if mime == "application/pdf" else ("audio" if "audio" in mime else ("video" if "video" in mime else "image"))
+        st.session_state.doc_sources.append({
+            "name": file_name,
+            "type": doc_type,
+            "bytes": file_bytes,
+            "mime": mime,
+        })
+    except Exception as e:
+        st.error(f"Google Upload Error for {file_name}: {e}")
+    finally:
+        os.remove(tmp_path)
+
 
 # embedding helpers
 def embed_text(text: str) -> np.ndarray | None:
@@ -551,7 +585,9 @@ if uploaded_files:
             file_bytes = file.read()
             mime = file.type  # e.g. "image/png" or "application/pdf"
 
-            if mime == "application/pdf":
+            if retrieval_strategy == "Managed RAG (Google File Search)":
+                add_file_to_google_store(file.name, file_bytes, mime)
+            elif mime == "application/pdf":
                 chunks = chunk_pdf(file_bytes)
                 for chunk_bytes, page_label in chunks:
                     embeddings = embed_pdf(chunk_bytes)
@@ -584,7 +620,7 @@ if uploaded_files:
                     label = f"{file.name} · {image_caption}" if image_caption else file.name
                     add_document(emb, label, "image", mime, file_bytes)
 
-            progress.progress((i + 1) / len(new_files), text=f"Embedded {file.name}")
+            progress.progress((i + 1) / len(new_files), text=f"Processed {file.name}")
 
         progress.empty()
         st.success(f"Added {len(new_files)} file(s). Total docs: {len(st.session_state.doc_sources)}")

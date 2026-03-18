@@ -488,11 +488,11 @@ def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
     except Exception as e:
         return f"Generation error: {e}"
 
-def answer_managed(question: str) -> str:
+def answer_managed(question: str) -> tuple[str, list[str]]:
     """Pass the question to Gemini 2.5 Pro with the FileSearch store tool for a grounded answer."""
     store = get_or_create_google_store()
     if not store:
-        return "No Managed File Search store available."
+        return "No Managed File Search store available.", []
         
     try:
         response = client.models.generate_content(
@@ -508,9 +508,20 @@ def answer_managed(question: str) -> str:
                 ]
             )
         )
-        return response.text
+        
+        citations = []
+        if response.candidates and response.candidates[0].grounding_metadata:
+            meta = response.candidates[0].grounding_metadata
+            if hasattr(meta, 'grounding_chunks'):
+                for chunk in meta.grounding_chunks:
+                    if hasattr(chunk, 'retrieved_context') and chunk.retrieved_context:
+                        title = getattr(chunk.retrieved_context, 'title', None)
+                        if title and title not in citations:
+                            citations.append(title)
+                            
+        return response.text, citations
     except Exception as e:
-        return f"Managed generation error: {e}"
+        return f"Managed generation error: {e}", []
 
 SAMPLE_IMAGES = {
     "Tesla Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fbef936e6-3efa-43b3-88d7-7ec620cdb33b_2744x1539.png",
@@ -687,8 +698,10 @@ else:
             st.markdown("---")
             st.subheader("💬 Managed Answer")
             with st.spinner("Searching backend documents and generating answer..."):
-                generated = answer_managed(query)
+                generated, citations = answer_managed(query)
             st.markdown(generated)
+            if citations:
+                st.caption(f"**Sources:** {', '.join(citations)}")
         else:
             with st.spinner("Searching Local Vector Store..."):
                 results = search(query, top_k=top_k)

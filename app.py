@@ -488,6 +488,30 @@ def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
     except Exception as e:
         return f"Generation error: {e}"
 
+def answer_managed(question: str) -> str:
+    """Pass the question to Gemini 2.5 Pro with the FileSearch store tool for a grounded answer."""
+    store = get_or_create_google_store()
+    if not store:
+        return "No Managed File Search store available."
+        
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=question,
+            config=types.GenerateContentConfig(
+                tools=[
+                    types.Tool(
+                        file_search=types.FileSearch(
+                            file_search_store_names=[store.name]
+                        )
+                    )
+                ]
+            )
+        )
+        return response.text
+    except Exception as e:
+        return f"Managed generation error: {e}"
+
 SAMPLE_IMAGES = {
     "Tesla Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fbef936e6-3efa-43b3-88d7-7ec620cdb33b_2744x1539.png",
     "Netflix Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F23bd84c9-5b62-4526-b467-3088e27e4193_2744x1539.png",
@@ -659,35 +683,42 @@ else:
     top_k = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k")
 
     if st.button("Search & Answer", key="search_btn", disabled=not query):
-        with st.spinner("Searching..."):
-            results = search(query, top_k=top_k)
-
-        if results:
-            st.markdown(f"**Top {len(results)} result(s) for:** *{query}*")
-            cols = st.columns(len(results))
-            for col, res in zip(cols, results):
-                with col:
-                    if res["type"] == "image":
-                        st.image(res["bytes"], width='stretch')
-                    elif res["type"] == "audio":
-                        st.audio(res["bytes"], format=res["mime"])
-                    elif res["type"] == "video":
-                        st.video(res["bytes"])
-                    else:
-                        st.markdown("📄 PDF")
-                    st.caption(f"**{res['name']}**")
-                    st.caption(f"Score: `{res['score']:.4f}`")
-
-            # generate answer from top result
+        if retrieval_strategy == "Managed RAG (Google File Search)":
             st.markdown("---")
-            st.subheader("💬 Answer")
-            top = results[0]
-            with st.spinner("Generating answer from top result..."):
-                generated = answer(query, top["bytes"], top["mime"])
+            st.subheader("💬 Managed Answer")
+            with st.spinner("Searching backend documents and generating answer..."):
+                generated = answer_managed(query)
             st.markdown(generated)
-            st.caption(f"Answer based on: **{top['name']}** (score: `{top['score']:.4f}`)")        
         else:
-            st.warning("No results found.")
+            with st.spinner("Searching Local Vector Store..."):
+                results = search(query, top_k=top_k)
+
+            if results:
+                st.markdown(f"**Top {len(results)} result(s) for:** *{query}*")
+                cols = st.columns(len(results))
+                for col, res in zip(cols, results):
+                    with col:
+                        if res["type"] == "image":
+                            st.image(res["bytes"], width='stretch')
+                        elif res["type"] == "audio":
+                            st.audio(res["bytes"], format=res["mime"])
+                        elif res["type"] == "video":
+                            st.video(res["bytes"])
+                        else:
+                            st.markdown("📄 PDF")
+                        st.caption(f"**{res['name']}**")
+                        st.caption(f"Score: `{res['score']:.4f}`")
+
+                # generate answer from top result
+                st.markdown("---")
+                st.subheader("💬 Answer")
+                top = results[0]
+                with st.spinner("Generating answer from top result..."):
+                    generated = answer(query, top["bytes"], top["mime"])
+                st.markdown(generated)
+                st.caption(f"Answer based on: **{top['name']}** (score: `{top['score']:.4f}`)")        
+            else:
+                st.warning("No results found.")
 
 # image-as-query search
 st.markdown("---")

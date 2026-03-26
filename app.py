@@ -531,13 +531,18 @@ def search(query: str, top_k: int = 3) -> list[dict]:
             # Reconstruct the file bytes from base64 stored in metadata
             b64_data = meta.get("data_b64", "")
             file_bytes = base64.b64decode(b64_data) if b64_data else b""
-            
+
+            # Decode the PDF page preview thumbnail (may be absent for older entries)
+            preview_b64 = meta.get("preview_b64", "")
+            preview_bytes = base64.b64decode(preview_b64) if preview_b64 else None
+
             out.append({
                 "id": doc_id,
                 "name": meta.get("name", "Unknown Document"),
                 "type": meta.get("type", "unknown"),
                 "mime": meta.get("mime", "application/octet-stream"),
                 "bytes": file_bytes,
+                "preview_bytes": preview_bytes,
                 "score": 1.0 - dist  # Chroma returns cosine distance; metric is 1 - similarity
             })
     return out
@@ -735,12 +740,17 @@ else:
                     with col:
                         if res["type"] == "image":
                             st.image(res["bytes"], width="stretch")
+                        elif res["type"] == "pdf":
+                            if res.get("preview_bytes"):
+                                st.image(res["preview_bytes"], width="stretch")
+                            else:
+                                st.markdown("📄 PDF")
                         elif res["type"] == "audio":
                             st.audio(res["bytes"], format=res["mime"])
                         elif res["type"] == "video":
                             st.video(res["bytes"])
                         else:
-                            st.markdown("📄 PDF")
+                            st.markdown("📄")
                         st.caption(res["name"])
             if msg.get("citations"):
                 st.caption(f"**Sources:** {', '.join(msg['citations'])}")
@@ -780,12 +790,17 @@ else:
                         with col:
                             if res["type"] == "image":
                                 st.image(res["bytes"], width="stretch")
+                            elif res["type"] == "pdf":
+                                if res.get("preview_bytes"):
+                                    st.image(res["preview_bytes"], width="stretch")
+                                else:
+                                    st.markdown("📄 PDF")
                             elif res["type"] == "audio":
                                 st.audio(res["bytes"], format=res["mime"])
                             elif res["type"] == "video":
                                 st.video(res["bytes"])
                             else:
-                                st.markdown("📄 PDF")
+                                st.markdown("📄")
                             st.caption(res["name"])
                     st.session_state.messages.append({
                         "role": "assistant",

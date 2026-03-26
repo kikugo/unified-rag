@@ -115,7 +115,7 @@ with st.sidebar:
             st.rerun()
 
     # Document Manager
-    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️"}
+    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️", "video_frame": "🎞️"}
     sources = st.session_state.doc_sources
 
     if not sources:
@@ -279,7 +279,7 @@ def route_query(question: str) -> str:
     prompt = (
         "You are a query router for a multimodal RAG application. "
         "Given a user question, decide which backend is best:\n"
-        "- 'local': precise lookup in locally embedded images, PDF pages, audio or video clips\n"
+        "- 'local': precise lookup in locally embedded images, PDF pages, audio, or video frame timestamps\n"
         "- 'managed': broad text search / summarisation across large text documents\n\n"
         f"User question: {question}\n\n"
         "Reply with exactly one word: local OR managed"
@@ -902,6 +902,13 @@ else:
                             st.audio(res["bytes"], format=res["mime"])
                         elif res["type"] == "video":
                             st.video(res["bytes"])
+                        elif res["type"] == "video_frame":
+                            if res.get("preview_bytes"):
+                                st.image(res["preview_bytes"], width="stretch")
+                            else:
+                                st.markdown("🎞️ Frame")
+                            if res.get("video_bytes"):
+                                st.video(res["video_bytes"])
                         else:
                             st.markdown("📄")
                         st.caption(res["name"])
@@ -977,6 +984,13 @@ else:
                                 st.audio(res["bytes"], format=res["mime"])
                             elif res["type"] == "video":
                                 st.video(res["bytes"])
+                            elif res["type"] == "video_frame":
+                                if res.get("preview_bytes"):
+                                    st.image(res["preview_bytes"], width="stretch")
+                                else:
+                                    st.markdown("🎞️ Frame")
+                                if res.get("video_bytes"):
+                                    st.video(res["video_bytes"])
                             else:
                                 st.markdown("📄")
                             st.caption(res["name"])
@@ -1048,6 +1062,13 @@ if run_img_query and query_image_sidebar:
                         st.audio(res["bytes"], format=res["mime"])
                     elif res["type"] == "video":
                         st.video(res["bytes"])
+                    elif res["type"] == "video_frame":
+                        if res.get("preview_bytes"):
+                            st.image(res["preview_bytes"], width="stretch")
+                        else:
+                            st.markdown("🎞️ Frame")
+                        if res.get("video_bytes"):
+                            st.video(res["video_bytes"])
                     else:
                         st.markdown("📄")
                     st.caption(f"**{res['name']}**")

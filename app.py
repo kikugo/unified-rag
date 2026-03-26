@@ -867,7 +867,8 @@ else:
         if use_managed:
             with st.chat_message("assistant"):
                 with st.spinner("Searching Google backend…"):
-                    gen, citations = answer_managed(query)
+                    gen, citations = answer_managed(query,
+                                                   history=st.session_state.messages)
                 full_text = st.write_stream(gen)
                 if citations:
                     st.caption(f"**Sources:** {', '.join(citations)}")
@@ -887,7 +888,10 @@ else:
             with st.chat_message("assistant"):
                 if results:
                     top = results[0]
-                    full_text = st.write_stream(answer(query, top["bytes"], top["mime"]))
+                    full_text = st.write_stream(
+                        answer(query, top["bytes"], top["mime"],
+                               history=st.session_state.messages)
+                    )
                     st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")
                     if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
                         st.session_state.tts_pending = full_text

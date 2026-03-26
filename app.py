@@ -28,6 +28,9 @@ if "active_dim" not in st.session_state:
     st.session_state.active_dim = 3072
 if "google_store" not in st.session_state:
     st.session_state.google_store = None
+if "messages" not in st.session_state:
+    # each msg: {"role": "user"|"assistant", "content": str, "results": [...], "citations": [...]}
+    st.session_state.messages = []
 
 # sidebar
 with st.sidebar:
@@ -474,28 +477,33 @@ def search(query: str, top_k: int = 3) -> list[dict]:
             })
     return out
 
-def answer(question: str, image_bytes: bytes, mime_type: str) -> str:
-    """Pass the top retrieved image + question to Gemini 2.5 Flash for an answer."""
+def answer(question: str, image_bytes: bytes, mime_type: str):
+    """Stream a grounded answer from Gemini 2.5 Flash based on the retrieved content."""
     try:
-        response = client.models.generate_content(
+        stream = client.models.generate_content_stream(
             model="gemini-2.5-flash",
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 question,
             ],
         )
-        return response.text
+        for chunk in stream:
+            if chunk.text:
+                yield chunk.text
     except Exception as e:
-        return f"Generation error: {e}"
+        yield f"Generation error: {e}"
 
-def answer_managed(question: str) -> tuple[str, list[str]]:
-    """Pass the question to Gemini 2.5 Pro with the FileSearch store tool for a grounded answer."""
+def answer_managed(question: str) -> tuple[object, list[str]]:
+    """Stream a grounded answer from Gemini 2.5 Pro using the Google File Search store."""
     store = get_or_create_google_store()
     if not store:
-        return "No Managed File Search store available.", []
-        
+        def _error():
+            yield "No Managed File Search store available."
+        return _error(), []
+
+    citations = []
     try:
-        response = client.models.generate_content(
+        stream = client.models.generate_content_stream(
             model="gemini-2.5-pro",
             contents=question,
             config=types.GenerateContentConfig(
@@ -508,20 +516,26 @@ def answer_managed(question: str) -> tuple[str, list[str]]:
                 ]
             )
         )
-        
-        citations = []
-        if response.candidates and response.candidates[0].grounding_metadata:
-            meta = response.candidates[0].grounding_metadata
-            if hasattr(meta, 'grounding_chunks'):
+        full_chunks = list(stream)
+        if full_chunks and full_chunks[-1].candidates:
+            meta = full_chunks[-1].candidates[0].grounding_metadata
+            if meta and hasattr(meta, 'grounding_chunks'):
                 for chunk in meta.grounding_chunks:
                     if hasattr(chunk, 'retrieved_context') and chunk.retrieved_context:
                         title = getattr(chunk.retrieved_context, 'title', None)
                         if title and title not in citations:
                             citations.append(title)
-                            
-        return response.text, citations
+
+        def _gen():
+            for c in full_chunks:
+                if c.text:
+                    yield c.text
+
+        return _gen(), citations
     except Exception as e:
-        return f"Managed generation error: {e}", []
+        def _error():
+            yield f"Managed generation error: {e}"
+        return _error(), []
 
 SAMPLE_IMAGES = {
     "Tesla Q4 2024": "https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fbef936e6-3efa-43b3-88d7-7ec620cdb33b_2744x1539.png",
@@ -681,57 +695,86 @@ if st.session_state.doc_sources:
 
 
 st.markdown("---")
-st.subheader("🔍 Search")
+st.subheader("💬 Chat with your Documents")
 
 if not st.session_state.doc_sources:
-    st.warning("Upload at least one file to start searching.")
+    st.info("Upload at least one file to start chatting.")
 else:
-    query = st.text_input(
-        "Ask a question about your documents:",
-        placeholder="e.g. What is the revenue trend?",
-        key="search_query",
-    )
-    top_k = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k")
+    top_k = st.slider("Results to retrieve", min_value=1, max_value=5, value=3, key="top_k")
 
-    if st.button("Search & Answer", key="search_btn", disabled=not query):
-        if retrieval_strategy == "Managed RAG (Google File Search)":
-            st.markdown("---")
-            st.subheader("💬 Managed Answer")
-            with st.spinner("Searching backend documents and generating answer..."):
-                generated, citations = answer_managed(query)
-            st.markdown(generated)
-            if citations:
-                st.caption(f"**Sources:** {', '.join(citations)}")
-        else:
-            with st.spinner("Searching Local Vector Store..."):
-                results = search(query, top_k=top_k)
-
-            if results:
-                st.markdown(f"**Top {len(results)} result(s) for:** *{query}*")
-                cols = st.columns(len(results))
-                for col, res in zip(cols, results):
+    # Render the full chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("results"):
+                cols = st.columns(min(len(msg["results"]), 5))
+                for col, res in zip(cols, msg["results"]):
                     with col:
                         if res["type"] == "image":
-                            st.image(res["bytes"], width='stretch')
+                            st.image(res["bytes"], width="stretch")
                         elif res["type"] == "audio":
                             st.audio(res["bytes"], format=res["mime"])
                         elif res["type"] == "video":
                             st.video(res["bytes"])
                         else:
                             st.markdown("📄 PDF")
-                        st.caption(f"**{res['name']}**")
-                        st.caption(f"Score: `{res['score']:.4f}`")
+                        st.caption(res["name"])
+            if msg.get("citations"):
+        if retrieval_strategy == "Managed RAG (Google File Search)":
+            with st.chat_message("assistant"):
+                with st.spinner("Searching Google backend…"):
+                    gen, citations = answer_managed(query)
+                full_text = st.write_stream(gen)
+                if citations:
+                    st.caption(f"**Sources:** {', '.join(citations)}")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": full_text,
+                "results": [],
+                "citations": citations,
+            })
+        else:
+            with st.spinner("Searching Local Vector Store…"):
+                results = search(query, top_k=top_k)
 
-                # generate answer from top result
-                st.markdown("---")
-                st.subheader("💬 Answer")
-                top = results[0]
-                with st.spinner("Generating answer from top result..."):
-                    generated = answer(query, top["bytes"], top["mime"])
-                st.markdown(generated)
-                st.caption(f"Answer based on: **{top['name']}** (score: `{top['score']:.4f}`)")        
-            else:
-                st.warning("No results found.")
+            with st.chat_message("assistant"):
+                if results:
+                    top = results[0]
+                    full_text = st.write_stream(answer(query, top["bytes"], top["mime"]))
+                    st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")  t"):
+                if results:
+                    top = results[0]
+                    with st.spinner("Generating answer…"):
+                        generated = answer(query, top["bytes"], top["mime"])
+                    st.markdown(generated)
+                    st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")
+                    cols = st.columns(min(len(results), 5))
+                    for col, res in zip(cols, results):
+                        with col:
+                            if res["type"] == "image":
+                                st.image(res["bytes"], width="stretch")
+                            elif res["type"] == "audio":
+                                st.audio(res["bytes"], format=res["mime"])
+                            elif res["type"] == "video":
+                                st.video(res["bytes"])
+                            else:
+                                st.markdown("📄 PDF")
+                            st.caption(res["name"])
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": full_text,
+                        "results": results,
+                        "citations": [],
+                    })
+                else:
+                    msg = "No results found — try rephrasing your question."
+                    st.warning(msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": msg,
+                        "results": [],
+                        "citations": [],
+                    })
 
 # image-as-query search
 st.markdown("---")

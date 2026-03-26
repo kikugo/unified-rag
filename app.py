@@ -791,7 +791,16 @@ else:
             st.markdown(query)
         st.session_state.messages.append({"role": "user", "content": query})
 
-        if retrieval_strategy == "Managed RAG (Google File Search)":
+        # Resolve strategy — Auto runs the router first
+        if retrieval_strategy == "Auto (Hybrid)":
+            with st.spinner("🤖 Routing query to best backend…"):
+                route = route_query(query)
+            st.toast(f"Routed to **{'Google Managed RAG' if route == 'managed' else 'Local Vector Store'}**", icon="🔀")
+            use_managed = (route == "managed")
+        else:
+            use_managed = (retrieval_strategy == "Managed RAG (Google File Search)")
+
+        if use_managed:
             with st.chat_message("assistant"):
                 with st.spinner("Searching Google backend…"):
                     gen, citations = answer_managed(query)

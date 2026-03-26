@@ -7,6 +7,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
 import fitz  # PyMuPDF
+import av
 import base64
 import uuid
 import tempfile
@@ -370,7 +371,41 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
 
 AUDIO_MAX_SECONDS = 80          # Gemini Embedding 2 hard limit for audio
 VIDEO_MAX_SECONDS = 80          # 80s for video-with-audio; 120s without — use conservative limit
+FRAME_INTERVAL_SEC = 5          # Extract a frame every N seconds for Deep Video Search
 IMAGE_MAX_DIM = 4096            # Resize images above this dimension
+
+def extract_video_frames(video_bytes: bytes, interval_sec: int = FRAME_INTERVAL_SEC) -> list[tuple[bytes, float]]:
+    """Extract frames from an MP4/MOV at a given interval using PyAV.
+    Yields (frame_png_bytes, timestamp_sec) tuples.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(video_bytes)
+        tmp_path = f.name
+    try:
+        container = av.open(tmp_path)
+        video_stream = next((s for s in container.streams if s.type == "video"), None)
+        if not video_stream:
+            return []
+        fps = float(video_stream.average_rate or 25)
+        # Avoid zero/negative interval sizes
+        interval_sec = max(1, interval_sec)
+        last_yielded_sec = -interval_sec
+        frames = []
+        for i, frame in enumerate(container.decode(video_stream)):
+            ts = float(frame.pts * video_stream.time_base) if frame.pts else i / fps
+            if ts - last_yielded_sec >= interval_sec:
+                img = frame.to_image()                  # PIL Image
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                frames.append((buf.getvalue(), ts))
+                last_yielded_sec = ts
+        container.close()
+        return frames
+    except Exception as e:
+        print(f"Error extracting video frames: {e}")
+        return []
+    finally:
+        os.remove(tmp_path)
 
 def get_video_duration_seconds(video_bytes: bytes) -> float | None:
     """Parse MP4/MOV container (pure Python) to extract duration from mvhd box.

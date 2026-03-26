@@ -407,6 +407,12 @@ def extract_video_frames(video_bytes: bytes, interval_sec: int = FRAME_INTERVAL_
     finally:
         os.remove(tmp_path)
 
+def format_timestamp(sec: float) -> str:
+    """Convert seconds into MM:SS format."""
+    m = int(sec // 60)
+    s = int(sec % 60)
+    return f"{m}:{s:02d}"
+
 def get_video_duration_seconds(video_bytes: bytes) -> float | None:
     """Parse MP4/MOV container (pure Python) to extract duration from mvhd box.
     Returns duration in seconds, or None if parsing fails.
@@ -537,7 +543,7 @@ def embed_video(video_bytes: bytes, mime_type: str) -> np.ndarray | None:
 
 
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
-                 preview_bytes: bytes | None = None):
+                 preview_bytes: bytes | None = None, video_bytes: bytes | None = None):
     """Helper to add an embedding to ChromaDB and session state."""
     doc_id = str(uuid.uuid4())
     try:
@@ -558,6 +564,7 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "bytes": file_bytes,
             "mime": mime,
             "preview_bytes": preview_bytes,
+            "video_bytes": video_bytes,
         })
     except Exception as e:
         st.error(f"Error saving to database: {e}")

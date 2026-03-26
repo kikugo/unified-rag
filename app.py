@@ -44,8 +44,8 @@ with st.sidebar:
     
     retrieval_strategy = st.radio(
         "Retrieval Strategy",
-        ["Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
-        help="Choose whether to embed and search files locally, or upload them to Google's managed infrastructure.",
+        ["Auto (Hybrid)", "Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
+        help="Auto: Gemini classifies each query and picks the best backend. Local: always searches your embedded files. Managed: always queries Google File Search.",
         key="retrieval_strategy"
     )
     
@@ -219,6 +219,34 @@ def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str):
         st.error(f"Google Upload Error for {file_name}: {e}")
     finally:
         os.remove(tmp_path)
+
+
+def route_query(question: str) -> str:
+    """Classify whether a question is best answered by the local vector store or
+    the Google Managed RAG backend, using a fast Gemini Flash call.
+
+    Returns 'local' or 'managed'.
+    - 'local'   → best for specific visual content, charts, images, audio, video clips
+    - 'managed' → best for broad text summarisation, multi-document synthesis,
+                  or anything needing full-text search across large corpora
+    """
+    prompt = (
+        "You are a query router for a multimodal RAG application. "
+        "Given a user question, decide which backend is best:\n"
+        "- 'local': precise lookup in locally embedded images, PDF pages, audio or video clips\n"
+        "- 'managed': broad text search / summarisation across large text documents\n\n"
+        f"User question: {question}\n\n"
+        "Reply with exactly one word: local OR managed"
+    )
+    try:
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        answer = resp.text.strip().lower()
+        return "managed" if "managed" in answer else "local"
+    except Exception:
+        return "local"  # safe fallback
 
 
 # embedding helpers

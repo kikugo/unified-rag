@@ -606,15 +606,31 @@ def search(query: str, top_k: int = 3) -> list[dict]:
             })
     return out
 
-def answer(question: str, image_bytes: bytes, mime_type: str):
-    """Stream a grounded answer from Gemini 2.5 Flash based on the retrieved content."""
+def answer(question: str, image_bytes: bytes, mime_type: str,
+           history: list[dict] | None = None):
+    """Stream a grounded answer from Gemini 2.5 Flash, with optional conversation history.
+
+    history: list of {role, content} dicts from st.session_state.messages (most recent last).
+    """
+    # Build multi-turn contents: [prior turns...] + [retrieved doc] + [current question]
+    MAX_HISTORY = 6  # keep last 3 exchanges to stay within context limits
+    contents: list = []
+    if history:
+        for msg in history[-(MAX_HISTORY):]:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+    # Append current turn: retrieved document + the question
+    contents.append(types.Content(
+        role="user",
+        parts=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part(text=question),
+        ],
+    ))
     try:
         stream = client.models.generate_content_stream(
             model="gemini-2.5-flash",
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                question,
-            ],
+            contents=contents,
         )
         for chunk in stream:
             if chunk.text:
@@ -622,19 +638,30 @@ def answer(question: str, image_bytes: bytes, mime_type: str):
     except Exception as e:
         yield f"Generation error: {e}"
 
-def answer_managed(question: str) -> tuple[object, list[str]]:
-    """Stream a grounded answer from Gemini 2.5 Pro using the Google File Search store."""
+def answer_managed(question: str,
+                   history: list[dict] | None = None) -> tuple[object, list[str]]:
+    """Stream a grounded answer from Gemini 2.5 Pro using the Google File Search store,
+    with optional conversation history for multi-turn context."""
     store = get_or_create_google_store()
     if not store:
         def _error():
             yield "No Managed File Search store available."
         return _error(), []
 
+    # Build multi-turn contents list
+    MAX_HISTORY = 6
+    contents: list = []
+    if history:
+        for msg in history[-(MAX_HISTORY):]:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+    contents.append(types.Content(role="user", parts=[types.Part(text=question)]))
+
     citations = []
     try:
         stream = client.models.generate_content_stream(
             model="gemini-2.5-pro",
-            contents=question,
+            contents=contents,
             config=types.GenerateContentConfig(
                 tools=[
                     types.Tool(

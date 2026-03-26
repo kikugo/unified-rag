@@ -813,6 +813,12 @@ else:
                         st.caption(res["name"])
             if msg.get("citations"):
                 st.caption(f"**Sources:** {', '.join(msg['citations'])}")
+            # Read Aloud button — only for assistant messages
+            if msg["role"] == "assistant" and msg.get("content"):
+                msg_idx = st.session_state.messages.index(msg)
+                if st.button("🔊 Read", key=f"tts_{msg_idx}", help="Read this answer aloud"):
+                    st.session_state.tts_pending = msg["content"]
+                    st.rerun()
 
     # Chat input
     query = st.chat_input("Ask a question about your documents…", key="chat_input")
@@ -838,6 +844,9 @@ else:
                 full_text = st.write_stream(gen)
                 if citations:
                     st.caption(f"**Sources:** {', '.join(citations)}")
+                if st.button("🔊 Read", key="tts_live_managed", help="Read this answer aloud"):
+                    st.session_state.tts_pending = full_text
+                    st.rerun()
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_text,
@@ -853,6 +862,9 @@ else:
                     top = results[0]
                     full_text = st.write_stream(answer(query, top["bytes"], top["mime"]))
                     st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")
+                    if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
+                        st.session_state.tts_pending = full_text
+                        st.rerun()
                     cols = st.columns(min(len(results), 5))
                     for col, res in zip(cols, results):
                         with col:

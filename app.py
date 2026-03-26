@@ -4,7 +4,7 @@ import wave
 import requests
 import streamlit as st
 import numpy as np
-import pypdf
+import fitz  # PyMuPDF
 import base64
 import uuid
 import tempfile
@@ -428,17 +428,20 @@ def embed_video(video_bytes: bytes, mime_type: str) -> np.ndarray | None:
 
 
 
-def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes):
+def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
+                 preview_bytes: bytes | None = None):
     """Helper to add an embedding to ChromaDB and session state."""
     doc_id = str(uuid.uuid4())
     try:
         b64_data = base64.b64encode(file_bytes).decode('utf-8')
+        metadata: dict = {"name": name, "type": doc_type, "mime": mime, "data_b64": b64_data}
+        if preview_bytes:
+            metadata["preview_b64"] = base64.b64encode(preview_bytes).decode('utf-8')
         chroma_collection.upsert(
             ids=[doc_id],
             embeddings=[emb.tolist()],
-            metadatas=[{"name": name, "type": doc_type, "mime": mime, "data_b64": b64_data}]
+            metadatas=[metadata]
         )
-        # Keep in session state for UI rendering and temporary search fallback (until Commit 4)
         st.session_state.doc_embeddings.append(emb)
         st.session_state.doc_sources.append({
             "id": doc_id,
@@ -446,31 +449,43 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "type": doc_type,
             "bytes": file_bytes,
             "mime": mime,
+            "preview_bytes": preview_bytes,
         })
     except Exception as e:
         st.error(f"Error saving to database: {e}")
 
-def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str]]:
-    """Split a PDF into chunks of up to chunk_size pages.
-    Returns a list of (chunk_bytes, page_range_label) tuples.
+def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, bytes]]:
+    """Split a PDF into chunks of up to chunk_size pages using PyMuPDF.
+
+    Returns a list of (chunk_pdf_bytes, page_range_label, preview_png_bytes).
+    preview_png_bytes is a rendered image of the first page of that chunk at 72 DPI.
     """
-    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-    total_pages = len(reader.pages)
+    src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    total_pages = src_doc.page_count
     chunks = []
 
     for start in range(0, total_pages, chunk_size):
         end = min(start + chunk_size, total_pages)
-        writer = pypdf.PdfWriter()
-        for page_num in range(start, end):
-            writer.add_page(reader.pages[page_num])
 
-        buf = io.BytesIO()
-        writer.write(buf)
-        chunk_bytes = buf.getvalue()
+        # Build a sub-document for this page range
+        chunk_doc = fitz.open()
+        chunk_doc.insert_pdf(src_doc, from_page=start, to_page=end - 1)
+        chunk_bytes = chunk_doc.tobytes()
 
-        label = f"pages {start + 1}–{end}" if total_pages > chunk_size else f"page {'1' if total_pages == 1 else f'1–{total_pages}'}"
-        chunks.append((chunk_bytes, label))
+        # Render first page of the chunk as a PNG thumbnail
+        page = chunk_doc[0]
+        pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))  # 72 DPI
+        preview_png = pix.tobytes(output="png")
+        chunk_doc.close()
 
+        if total_pages > chunk_size:
+            label = f"pages {start + 1}\u2013{end}"
+        else:
+            label = "page 1" if total_pages == 1 else f"pages 1\u2013{total_pages}"
+
+        chunks.append((chunk_bytes, label, preview_png))
+
+    src_doc.close()
     return chunks
 
 def search(query: str, top_k: int = 3) -> list[dict]:
@@ -664,9 +679,10 @@ if uploaded_files:
             if retrieval_strategy == "Managed RAG (Google File Search)":
                 add_file_to_google_store(file.name, file_bytes, mime)
             elif mime == "application/pdf":
-                for chunk_bytes, page_label in chunk_pdf(file_bytes):
+                for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
                     for emb in embed_pdf(chunk_bytes):
-                        add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes)
+                        add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
+                                     preview_bytes=preview_png)
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
                 emb = embed_audio(file_bytes, mime_type=audio_mime)

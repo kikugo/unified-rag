@@ -720,6 +720,16 @@ else:
                             st.markdown("📄 PDF")
                         st.caption(res["name"])
             if msg.get("citations"):
+                st.caption(f"**Sources:** {', '.join(msg['citations'])}")
+
+    # Chat input
+    query = st.chat_input("Ask a question about your documents…", key="chat_input")
+
+    if query:
+        with st.chat_message("user"):
+            st.markdown(query)
+        st.session_state.messages.append({"role": "user", "content": query})
+
         if retrieval_strategy == "Managed RAG (Google File Search)":
             with st.chat_message("assistant"):
                 with st.spinner("Searching Google backend…"):
@@ -741,12 +751,6 @@ else:
                 if results:
                     top = results[0]
                     full_text = st.write_stream(answer(query, top["bytes"], top["mime"]))
-                    st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")  t"):
-                if results:
-                    top = results[0]
-                    with st.spinner("Generating answer…"):
-                        generated = answer(query, top["bytes"], top["mime"])
-                    st.markdown(generated)
                     st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")
                     cols = st.columns(min(len(results), 5))
                     for col, res in zip(cols, results):

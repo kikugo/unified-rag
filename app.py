@@ -840,9 +840,20 @@ if uploaded_files:
                 if duration is not None and duration > VIDEO_MAX_SECONDS:
                     st.sidebar.warning(f"⏱️ {file.name} exceeds {VIDEO_MAX_SECONDS}s limit.")
                 else:
-                    emb = embed_video(file_bytes, mime_type=mime)
-                    if emb is not None:
-                        add_document(emb, file.name, "video", mime, file_bytes)
+                    frames = extract_video_frames(file_bytes)
+                    for frame_png, ts in frames:
+                        emb = embed_image(frame_png, mime_type="image/png")
+                        if emb is not None:
+                            add_document(
+                                emb,
+                                f"{file.name} · {format_timestamp(ts)}",
+                                "video_frame",
+                                mime,
+                                file_bytes=frame_png,
+                                preview_bytes=frame_png,
+                                video_bytes=file_bytes
+                            )
+
             else:
                 cap = image_caption
                 if cap:

@@ -1,8 +1,10 @@
 import io
+import json
 import struct
 import wave
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 import numpy as np
 import fitz  # PyMuPDF
 import base64
@@ -31,6 +33,35 @@ if "google_store" not in st.session_state:
 if "messages" not in st.session_state:
     # each msg: {"role": "user"|"assistant", "content": str, "results": [...], "citations": [...]}
     st.session_state.messages = []
+if "tts_pending" not in st.session_state:
+    st.session_state.tts_pending = None
+
+
+def speak_text(text: str):
+    """Fire a Web Speech API utterance in the browser. Zero-height iframe, no dependencies."""
+    # Sanitise the text so it's safe to embed in a JS string literal via json.dumps
+    js_text = json.dumps(text)
+    components.html(
+        f"""
+        <script>
+            (function() {{
+                if (!window.speechSynthesis) {{ return; }}
+                var u = new SpeechSynthesisUtterance({js_text});
+                u.rate = 1.0;
+                u.pitch = 1.05;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(u);
+            }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
+# Fire TTS if a message was queued last run
+if st.session_state.tts_pending:
+    speak_text(st.session_state.tts_pending)
+    st.session_state.tts_pending = None
 
 # sidebar
 with st.sidebar:

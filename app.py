@@ -85,13 +85,29 @@ with st.sidebar:
     for i, src in enumerate(st.session_state.doc_sources):
         c1, c2 = st.columns([5, 1])
         with c1:
-            icon = "📄" if src["type"] == "pdf" else "🖼️"
+            icon = {"pdf": "📄", "audio": "🎵", "video": "🎥"}.get(src["type"], "🖼️")
             st.caption(f"{icon} {src['name']}")
         with c2:
             if st.button("✕", key=f"rm_{i}", help=f"Remove {src['name']}"):
                 st.session_state.doc_embeddings.pop(i)
                 st.session_state.doc_sources.pop(i)
                 st.rerun()
+
+    st.markdown("---")
+    st.subheader("📤 Upload")
+    image_caption = st.text_input(
+        "Image caption (optional)",
+        placeholder="e.g. Tesla Q4 2024 earnings slide",
+        key="image_caption",
+    )
+    uploaded_files = st.file_uploader(
+        "Files",
+        type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+    if st.button("⚡ Load Sample Images", key="load_samples_btn", help="Pre-load 6 financial charts"):
+        load_sample_images()
 
 # init client
 client = None
@@ -600,50 +616,24 @@ with st.expander("ℹ️ About this app"):
     Gemini Flash for a grounded answer.
     """)
 
-st.markdown("---")
-st.subheader("📊 Load Sample Images")
-st.caption("Try the app instantly with pre-loaded financial charts from Tesla, Netflix, Nike, Google, Accenture, and Tencent.")
-if st.button("Load Sample Images", key="load_samples_btn"):
-    load_sample_images()
-
-# main ui
-st.markdown("---")
-st.subheader("📤 Upload Files")
-
-image_caption = st.text_input(
-    "Optional caption for uploaded images",
-    placeholder="e.g. Tesla Q4 2024 earnings slide — embeds text + image together for better retrieval",
-    key="image_caption",
-)
-
-uploaded_files = st.file_uploader(
-    "Upload images, PDFs, audio, or video files",
-    type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
-
+# process uploads from sidebar
 if uploaded_files:
-    # for PDFs, stored names have " · pages X-Y" suffix — match by base filename
     loaded_base_names = {s["name"].split(" · ")[0] for s in st.session_state.doc_sources}
     new_files = [f for f in uploaded_files if f.name not in loaded_base_names]
 
     if new_files:
-        progress = st.progress(0, text="Embedding files...")
+        progress = st.sidebar.progress(0, text="Embedding…")
         for i, file in enumerate(new_files):
             file_bytes = file.read()
-            mime = file.type  # e.g. "image/png" or "application/pdf"
+            mime = file.type
 
             if retrieval_strategy == "Managed RAG (Google File Search)":
                 add_file_to_google_store(file.name, file_bytes, mime)
             elif mime == "application/pdf":
-                chunks = chunk_pdf(file_bytes)
-                for chunk_bytes, page_label in chunks:
-                    embeddings = embed_pdf(chunk_bytes)
-                    for emb in embeddings:
+                for chunk_bytes, page_label in chunk_pdf(file_bytes):
+                    for emb in embed_pdf(chunk_bytes):
                         add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes)
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
-                # Gemini Embedding API expects "audio/mp3", not "audio/mpeg"
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
                 emb = embed_audio(file_bytes, mime_type=audio_mime)
                 if emb is not None:
@@ -651,46 +641,29 @@ if uploaded_files:
             elif mime in ("video/mp4", "video/quicktime"):
                 duration = get_video_duration_seconds(file_bytes)
                 if duration is not None and duration > VIDEO_MAX_SECONDS:
-                    st.warning(
-                        f"⏱️ **{file.name}** is {duration:.0f}s — the Gemini Embedding API "
-                        f"only supports videos up to {VIDEO_MAX_SECONDS}s. "
-                        f"Please trim your video to under {VIDEO_MAX_SECONDS} seconds and re-upload."
-                    )
+                    st.sidebar.warning(f"⏱️ {file.name} exceeds {VIDEO_MAX_SECONDS}s limit.")
                 else:
                     emb = embed_video(file_bytes, mime_type=mime)
                     if emb is not None:
                         add_document(emb, file.name, "video", mime, file_bytes)
             else:
-                if image_caption:
-                    emb = embed_image_with_caption(file_bytes, caption=image_caption, mime_type=mime)
+                cap = image_caption
+                if cap:
+                    emb = embed_image_with_caption(file_bytes, caption=cap, mime_type=mime)
                 else:
                     emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:
-                    label = f"{file.name} · {image_caption}" if image_caption else file.name
+                    label = f"{file.name} · {cap}" if cap else file.name
                     add_document(emb, label, "image", mime, file_bytes)
 
             progress.progress((i + 1) / len(new_files), text=f"Processed {file.name}")
 
         progress.empty()
-        st.success(f"Added {len(new_files)} file(s). Total docs: {len(st.session_state.doc_sources)}")
+        st.sidebar.success(f"Added {len(new_files)} file(s).")
     else:
-        st.info("All uploaded files are already loaded.")
+        st.sidebar.info("All files already loaded.")
 
-# loaded content gallery
-if st.session_state.doc_sources:
-    with st.expander(f"View Loaded Content ({len(st.session_state.doc_sources)} items)", expanded=False):
-        cols = st.columns(5)
-        for i, src in enumerate(st.session_state.doc_sources):
-            with cols[i % 5]:
-                if src["type"] == "image":
-                    st.image(src["bytes"], width='stretch')
-                elif src["type"] == "audio":
-                    st.audio(src["bytes"], format=src["mime"])
-                elif src["type"] == "video":
-                    st.markdown("🎥")
-                else:
-                    st.markdown("📄")
-                st.caption(src["name"])
+
 
 
 

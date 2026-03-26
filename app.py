@@ -82,16 +82,50 @@ with st.sidebar:
                 st.session_state.google_store = None
             st.rerun()
 
-    for i, src in enumerate(st.session_state.doc_sources):
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            icon = {"pdf": "📄", "audio": "🎵", "video": "🎥"}.get(src["type"], "🖼️")
-            st.caption(f"{icon} {src['name']}")
-        with c2:
-            if st.button("✕", key=f"rm_{i}", help=f"Remove {src['name']}"):
-                st.session_state.doc_embeddings.pop(i)
-                st.session_state.doc_sources.pop(i)
+    # Document Manager
+    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️"}
+    sources = st.session_state.doc_sources
+
+    if not sources:
+        st.caption("📭 No documents loaded yet.")
+    else:
+        import pandas as pd
+
+        type_options = ["All"] + sorted({s["type"] for s in sources})
+        type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
+
+        # Build dataframe; "#" tracks original index for safe deletion
+        df = pd.DataFrame([
+            {"#": i, "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
+            for i, s in enumerate(sources)
+            if type_filter == "All" or s["type"] == type_filter
+        ])
+
+        event = st.dataframe(
+            df[["Icon", "Name", "Type"]],
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="doc_table",
+        )
+
+        selected_orig_idx = (
+            int(df.iloc[event.selection.rows[0]]["#"]) if event.selection.rows else None
+        )
+
+        # Delete selected row
+        col_del, col_count = st.columns([1, 2])
+        with col_del:
+            if st.button("🗑 Delete", key="delete_row_btn", disabled=selected_orig_idx is None):
+                st.session_state.doc_embeddings.pop(selected_orig_idx)
+                st.session_state.doc_sources.pop(selected_orig_idx)
                 st.rerun()
+        with col_count:
+            shown = len(df)
+            total = len(sources)
+            label = f"{shown} of {total}" if shown != total else f"{total}"
+            st.caption(f"📚 {label} document(s)")
 
     st.markdown("---")
     st.subheader("📤 Upload")

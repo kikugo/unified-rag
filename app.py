@@ -159,6 +159,20 @@ with st.sidebar:
             st.caption(f"📚 {label} document(s)")
 
     st.markdown("---")
+    st.subheader("🔍 Image Query")
+    st.caption("Search by uploading an image instead of typing.")
+    query_image_sidebar = st.file_uploader(
+        "Query image",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+        key="image_query_uploader",
+        label_visibility="collapsed",
+    )
+    top_k_img = st.slider("Results", min_value=1, max_value=5, value=3, key="top_k_img")
+    run_img_query = st.button("🔍 Find Similar", key="img_search_btn",
+                              disabled=not (query_image_sidebar and st.session_state.doc_sources))
+
+    st.markdown("---")
     st.subheader("📤 Upload")
     image_caption = st.text_input(
         "Image caption (optional)",
@@ -929,62 +943,68 @@ else:
                         "citations": [],
                     })
 
-# image-as-query search
-st.markdown("---")
-st.subheader("🖼️ Search by Image")
-st.caption("Upload an image as your query — Gemini Embedding 2 will find the most visually and semantically similar content in your library.")
+# Image query processing (fired by the sidebar Find Similar button)
+if run_img_query and query_image_sidebar:
+    query_bytes = query_image_sidebar.read()
+    query_mime = query_image_sidebar.type
+    dim = st.session_state.get("embedding_dim", 3072)
 
-if not st.session_state.doc_sources:
-    st.warning("Upload at least one file to your library first.")
-else:
-    query_image = st.file_uploader(
-        "Upload a query image",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=False,
-        key="image_query_uploader",
-        label_visibility="collapsed",
-    )
-    top_k_img = st.slider("Number of results", min_value=1, max_value=5, value=3, key="top_k_img")
+    # Post the query image as a user message
+    with st.chat_message("user"):
+        st.image(query_bytes, width=200, caption="Image query")
+    st.session_state.messages.append({
+        "role": "user",
+        "content": "🔍 Image similarity search",
+    })
 
-    if query_image and st.button("Find Similar", key="img_search_btn"):
-        query_bytes = query_image.read()
-        query_mime = query_image.type
-        dim = st.session_state.get("embedding_dim", 3072)
+    with st.spinner("Embedding query image…"):
+        try:
+            result = client.models.embed_content(
+                model="gemini-embedding-2-preview",
+                contents=[types.Part.from_bytes(data=query_bytes, mime_type=query_mime)],
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=dim,
+                ),
+            )
+            query_emb = np.array(result.embeddings[0].values)
+        except Exception as e:
+            st.error(f"Query embedding error: {e}")
+            query_emb = None
 
-        with st.spinner("Embedding query image..."):
-            try:
-                result = client.models.embed_content(
-                    model="gemini-embedding-2-preview",
-                    contents=[types.Part.from_bytes(data=query_bytes, mime_type=query_mime)],
-                    config=types.EmbedContentConfig(
-                        task_type="RETRIEVAL_QUERY",
-                        output_dimensionality=dim,
-                    ),
-                )
-                query_emb = np.array(result.embeddings[0].values)
-            except Exception as e:
-                st.error(f"Query embedding error: {e}")
-                query_emb = None
+    if query_emb is not None:
+        scores = [cosine_similarity(query_emb, doc_emb)
+                  for doc_emb in st.session_state.doc_embeddings]
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k_img]
+        img_results = [{**st.session_state.doc_sources[i], "score": scores[i]}
+                       for i in top_indices]
 
-        if query_emb is not None:
-            scores = [cosine_similarity(query_emb, doc_emb) for doc_emb in st.session_state.doc_embeddings]
-            top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k_img]
-            img_results = [{**st.session_state.doc_sources[i], "score": scores[i]} for i in top_indices]
-
-            st.markdown(f"**Top {len(img_results)} result(s) for your query image:**")
-            cols = st.columns(len(img_results))
+        with st.chat_message("assistant"):
+            st.markdown(f"Found **{len(img_results)}** similar item(s):")
+            cols = st.columns(min(len(img_results), 5))
             for col, res in zip(cols, img_results):
                 with col:
                     if res["type"] == "image":
-                        st.image(res["bytes"], width='stretch')
+                        st.image(res["bytes"], width="stretch")
+                    elif res["type"] == "pdf":
+                        if res.get("preview_bytes"):
+                            st.image(res["preview_bytes"], width="stretch")
+                        else:
+                            st.markdown("📄 PDF")
                     elif res["type"] == "audio":
                         st.audio(res["bytes"], format=res["mime"])
                     elif res["type"] == "video":
                         st.video(res["bytes"])
                     else:
-                        st.markdown("📄 PDF")
+                        st.markdown("📄")
                     st.caption(f"**{res['name']}**")
                     st.caption(f"Score: `{res['score']:.4f}`")
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": f"Found {len(img_results)} similar item(s) for your image query.",
+            "results": img_results,
+            "citations": [],
+        })
 
 # footer
 st.markdown("---")

@@ -1,0 +1,6 @@
+*.code-workspace
+.DS_Store
+__pycache__/
+*.pyc
+.env
+chroma_db/

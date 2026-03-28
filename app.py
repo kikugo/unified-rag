@@ -850,9 +850,39 @@ if uploaded_files:
     else:
         st.sidebar.info("All files already loaded.")
 
-
-
-
+def render_results_gallery(results, show_score=False):
+    if not results:
+        return
+    cols = st.columns(min(len(results), 5))
+    for col, res in zip(cols, results):
+        with col:
+            res_type = res.get("type", "")
+            if res_type == "image":
+                st.image(res["bytes"], width="stretch")
+            elif res_type == "pdf":
+                if res.get("preview_bytes"):
+                    st.image(res["preview_bytes"], width="stretch")
+                else:
+                    st.markdown("📄 PDF")
+            elif res_type == "audio":
+                st.audio(res["bytes"], format=res.get("mime"))
+            elif res_type == "video":
+                st.video(res["bytes"])
+            elif res_type == "video_frame":
+                if res.get("preview_bytes"):
+                    st.image(res["preview_bytes"], width="stretch")
+                else:
+                    st.markdown("🎞️ Frame")
+                if res.get("video_bytes"):
+                    st.video(res["video_bytes"])
+            else:
+                st.markdown("📄")
+            
+            if show_score:
+                st.caption(f"**{res.get('name', 'Unknown')}**")
+                st.caption(f"Score: `{res.get('score', 0):.4f}`")
+            else:
+                st.caption(res.get("name", "Unknown"))
 
 st.markdown("---")
 st.subheader("💬 Chat with your Documents")
@@ -867,30 +897,7 @@ else:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg.get("results"):
-                cols = st.columns(min(len(msg["results"]), 5))
-                for col, res in zip(cols, msg["results"]):
-                    with col:
-                        if res["type"] == "image":
-                            st.image(res["bytes"], width="stretch")
-                        elif res["type"] == "pdf":
-                            if res.get("preview_bytes"):
-                                st.image(res["preview_bytes"], width="stretch")
-                            else:
-                                st.markdown("📄 PDF")
-                        elif res["type"] == "audio":
-                            st.audio(res["bytes"], format=res["mime"])
-                        elif res["type"] == "video":
-                            st.video(res["bytes"])
-                        elif res["type"] == "video_frame":
-                            if res.get("preview_bytes"):
-                                st.image(res["preview_bytes"], width="stretch")
-                            else:
-                                st.markdown("🎞️ Frame")
-                            if res.get("video_bytes"):
-                                st.video(res["video_bytes"])
-                        else:
-                            st.markdown("📄")
-                        st.caption(res["name"])
+                render_results_gallery(msg["results"])
             if msg.get("citations"):
                 st.caption(f"**Sources:** {', '.join(msg['citations'])}")
             # Read Aloud button — only for assistant messages
@@ -949,30 +956,7 @@ else:
                     if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
                         st.session_state.tts_pending = full_text
                         st.rerun()
-                    cols = st.columns(min(len(results), 5))
-                    for col, res in zip(cols, results):
-                        with col:
-                            if res["type"] == "image":
-                                st.image(res["bytes"], width="stretch")
-                            elif res["type"] == "pdf":
-                                if res.get("preview_bytes"):
-                                    st.image(res["preview_bytes"], width="stretch")
-                                else:
-                                    st.markdown("📄 PDF")
-                            elif res["type"] == "audio":
-                                st.audio(res["bytes"], format=res["mime"])
-                            elif res["type"] == "video":
-                                st.video(res["bytes"])
-                            elif res["type"] == "video_frame":
-                                if res.get("preview_bytes"):
-                                    st.image(res["preview_bytes"], width="stretch")
-                                else:
-                                    st.markdown("🎞️ Frame")
-                                if res.get("video_bytes"):
-                                    st.video(res["video_bytes"])
-                            else:
-                                st.markdown("📄")
-                            st.caption(res["name"])
+                    render_results_gallery(results)
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": full_text,
@@ -1023,31 +1007,7 @@ if run_img_query and query_image_sidebar:
 
         with st.chat_message("assistant"):
             st.markdown(f"Found **{len(img_results)}** similar item(s):")
-            cols = st.columns(min(len(img_results), 5))
-            for col, res in zip(cols, img_results):
-                with col:
-                    if res["type"] == "image":
-                        st.image(res["bytes"], width="stretch")
-                    elif res["type"] == "pdf":
-                        if res.get("preview_bytes"):
-                            st.image(res["preview_bytes"], width="stretch")
-                        else:
-                            st.markdown("📄 PDF")
-                    elif res["type"] == "audio":
-                        st.audio(res["bytes"], format=res["mime"])
-                    elif res["type"] == "video":
-                        st.video(res["bytes"])
-                    elif res["type"] == "video_frame":
-                        if res.get("preview_bytes"):
-                            st.image(res["preview_bytes"], width="stretch")
-                        else:
-                            st.markdown("🎞️ Frame")
-                        if res.get("video_bytes"):
-                            st.video(res["video_bytes"])
-                    else:
-                        st.markdown("📄")
-                    st.caption(f"**{res['name']}**")
-                    st.caption(f"Score: `{res['score']:.4f}`")
+            render_results_gallery(img_results, show_score=True)
         st.session_state.messages.append({
             "role": "assistant",
             "content": f"Found {len(img_results)} similar item(s) for your image query.",

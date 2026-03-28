@@ -414,43 +414,19 @@ def format_timestamp(sec: float) -> str:
     return f"{m}:{s:02d}"
 
 def get_video_duration_seconds(video_bytes: bytes) -> float | None:
-    """Parse MP4/MOV container (pure Python) to extract duration from mvhd box.
-    Returns duration in seconds, or None if parsing fails.
-    """
-    data = video_bytes
-    i = 0
-    while i + 8 <= len(data):
-        try:
-            box_size = struct.unpack('>I', data[i:i+4])[0]
-            box_type = data[i+4:i+8]
-        except struct.error:
-            break
-        if box_size < 8:
-            break
-        if box_type == b'moov':
-            j = i + 8
-            while j + 8 <= i + box_size:
-                try:
-                    inner_size = struct.unpack('>I', data[j:j+4])[0]
-                    inner_type = data[j+4:j+8]
-                except struct.error:
-                    break
-                if inner_type == b'mvhd' and inner_size >= 32:
-                    version = data[j+8]
-                    if version == 0:
-                        timescale = struct.unpack('>I', data[j+20:j+24])[0]
-                        duration  = struct.unpack('>I', data[j+24:j+28])[0]
-                    else:  # version 1 (64-bit timestamps)
-                        timescale = struct.unpack('>I', data[j+28:j+32])[0]
-                        duration  = struct.unpack('>Q', data[j+32:j+40])[0]
-                    return duration / timescale if timescale > 0 else None
-                if inner_size == 0:
-                    break
-                j += inner_size
-        if box_size == 0:
-            break
-        i += box_size
-    return None
+    """Use PyAV to extract duration in seconds."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+    try:
+        with av.open(tmp_path) as container:
+            if container.duration is not None:
+                return float(container.duration / av.time_base)
+            return None
+    except Exception:
+        return None
+    finally:
+        os.remove(tmp_path)
 
 def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
     """Resize an image that exceeds IMAGE_MAX_DIM using Pillow.

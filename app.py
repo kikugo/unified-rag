@@ -579,7 +579,7 @@ def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, b
     src_doc.close()
     return chunks
 
-def search(query: str, top_k: int = 3) -> list[dict]:
+def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> list[dict]:
     """Embed query and query ChromaDB for top-K results."""
     try:
         if chroma_collection.count() == 0:
@@ -587,25 +587,28 @@ def search(query: str, top_k: int = 3) -> list[dict]:
     except Exception:
         return []
 
-    dim = st.session_state.get("embedding_dim", 3072)
-    try:
-        result = client.models.embed_content(
-            model="gemini-embedding-2-preview",
-            contents=query,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_QUERY",
-                output_dimensionality=dim,
-            ),
-        )
-        query_emb = result.embeddings[0].values
-    except Exception as e:
-        st.error(f"Query embedding error: {e}")
+    if query_emb is None and query:
+        dim = st.session_state.get("embedding_dim", 3072)
+        try:
+            result = client.models.embed_content(
+                model="gemini-embedding-2-preview",
+                contents=query,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=dim,
+                ),
+            )
+            query_emb = np.array(result.embeddings[0].values)
+        except Exception as e:
+            st.error(f"Query embedding error: {e}")
+            return []
+    elif query_emb is None:
         return []
 
     # Query Chroma
     try:
         results = chroma_collection.query(
-            query_embeddings=[query_emb],
+            query_embeddings=[query_emb.tolist()],
             n_results=min(top_k, chroma_collection.count())
         )
     except Exception as e:
@@ -1016,11 +1019,7 @@ if run_img_query and query_image_sidebar:
             query_emb = None
 
     if query_emb is not None:
-        scores = [cosine_similarity(query_emb, doc_emb)
-                  for doc_emb in st.session_state.doc_embeddings]
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k_img]
-        img_results = [{**st.session_state.doc_sources[i], "score": scores[i]}
-                       for i in top_indices]
+        img_results = search(query=None, top_k=top_k_img, query_emb=query_emb)
 
         with st.chat_message("assistant"):
             st.markdown(f"Found **{len(img_results)}** similar item(s):")

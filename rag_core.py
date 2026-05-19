@@ -125,3 +125,14 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
             scores[doc_id] = scores.get(doc_id, 0.0) + 1 / (k + rank + 1)
 
     return sorted(scores, key=lambda doc_id: (-scores[doc_id], first_seen[doc_id]))
+
+
+def expand_query_variants(query: str) -> list[str]:
+    q = query.strip()
+    if not q:
+        return []
+    variants = {q}
+    if len(q.split()) <= 5:
+        variants.add(f"{q} details")
+        variants.add(f"explain {q}")
+    return [v for v in variants if v != q]

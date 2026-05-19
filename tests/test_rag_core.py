@@ -3,6 +3,7 @@ import unittest
 from rag_core import (
     bm25_rank,
     build_local_answer_prompt,
+    expand_query_variants,
     reciprocal_rank_fusion,
     tokenize_for_search,
     pop_source_and_embedding,
@@ -97,6 +98,10 @@ class RagCoreTest(unittest.TestCase):
 
         self.assertEqual(fused[0], "shared")
         self.assertEqual(set(fused), {"dense-top", "shared", "dense-third", "sparse-second"})
+
+    def test_expand_query_variants_for_short_queries(self):
+        variants = expand_query_variants("margin")
+        self.assertTrue(any("margin" in variant for variant in variants))
 
 
 if __name__ == "__main__":

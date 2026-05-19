@@ -3,6 +3,7 @@ import json
 import struct
 import wave
 import requests
+import re
 import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
@@ -16,6 +17,16 @@ from PIL import Image
 from google import genai
 from google.genai import types
 import chromadb
+from rag_core import (
+    MANAGED_BACKEND,
+    bm25_rank,
+    build_local_answer_prompt,
+    pop_source_and_embedding,
+    reciprocal_rank_fusion,
+    select_context_results,
+)
+from storage import delete_blob, persist_blob, read_blob
+from source_registry import delete_source, list_sources, upsert_source
 
 # page config
 st.set_page_config(page_title="Unified RAG", layout="wide")
@@ -36,6 +47,20 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "tts_pending" not in st.session_state:
     st.session_state.tts_pending = None
+if "corpus_id" not in st.session_state:
+    st.session_state.corpus_id = str(uuid.uuid4())
+if "pending_clear_all" not in st.session_state:
+    st.session_state.pending_clear_all = False
+if "pending_delete_chroma_ids" not in st.session_state:
+    st.session_state.pending_delete_chroma_ids = []
+if "pending_cleanup_paths" not in st.session_state:
+    st.session_state.pending_cleanup_paths = []
+if "load_samples_requested" not in st.session_state:
+    st.session_state.load_samples_requested = False
+if "selected_citation_source_id" not in st.session_state:
+    st.session_state.selected_citation_source_id = None
+
+client = None
 
 
 def speak_text(text: str):
@@ -94,6 +119,7 @@ with st.sidebar:
         if st.session_state.doc_sources:
             st.session_state.doc_embeddings = []
             st.session_state.doc_sources = []
+            st.session_state.corpus_id = str(uuid.uuid4())
             st.toast("Dimension changed — documents cleared. Re-upload to re-embed.", icon="⚠️")
         st.session_state.active_dim = st.session_state.embedding_dim
 
@@ -104,15 +130,7 @@ with st.sidebar:
         st.caption(f"📚 {doc_count} document(s) loaded")
     with c2:
         if st.button("🗑️", key="clear_btn", disabled=doc_count == 0, help="Clear all"):
-            st.session_state.doc_embeddings = []
-            st.session_state.doc_sources = []
-            if st.session_state.google_store is not None and client is not None:
-                try:
-                    client.file_search_stores.delete(name=st.session_state.google_store.name, config={'force': True})
-                except Exception:
-                    pass
-                st.session_state.google_store = None
-            st.rerun()
+            st.session_state.pending_clear_all = True
 
     # Document Manager
     TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️", "video_frame": "🎞️"}
@@ -150,8 +168,15 @@ with st.sidebar:
         col_del, col_count = st.columns([1, 2])
         with col_del:
             if st.button("🗑 Delete", key="delete_row_btn", disabled=selected_orig_idx is None):
-                st.session_state.doc_embeddings.pop(selected_orig_idx)
-                st.session_state.doc_sources.pop(selected_orig_idx)
+                removed, chroma_ids = pop_source_and_embedding(
+                    st.session_state.doc_sources,
+                    st.session_state.doc_embeddings,
+                    selected_orig_idx,
+                )
+                for path_key in ("file_path", "preview_path", "video_path"):
+                    if removed.get(path_key):
+                        st.session_state.pending_cleanup_paths.append(removed[path_key])
+                st.session_state.pending_delete_chroma_ids.extend(chroma_ids)
                 st.rerun()
         with col_count:
             shown = len(df)
@@ -180,6 +205,13 @@ with st.sidebar:
         placeholder="e.g. Tesla Q4 2024 earnings slide",
         key="image_caption",
     )
+    image_captions_map_raw = st.text_area(
+        "Per-image captions (one per line: filename|caption)",
+        value="",
+        key="image_captions_map",
+        help="Example: chart1.png|Revenue by quarter",
+    )
+    auto_caption_images = st.checkbox("Auto-caption images when caption missing", value=True, key="auto_caption_images")
     uploaded_files = st.file_uploader(
         "Files",
         type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
@@ -187,10 +219,9 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     if st.button("⚡ Load Sample Images", key="load_samples_btn", help="Pre-load 6 financial charts"):
-        load_sample_images()
+        st.session_state.load_samples_requested = True
 
 # init client
-client = None
 if google_api_key:
     client = genai.Client(api_key=google_api_key)
     st.sidebar.success("Client ready!")
@@ -216,12 +247,60 @@ try:
     
     chroma_client = get_chroma_client(chroma_tenant, chroma_database, chroma_api_key)
     chroma_collection = chroma_client.get_or_create_collection(
-        name="unified_rag",
+        name=f"unified_rag_{st.session_state.active_dim}",
         metadata={"hnsw:space": "cosine"}
     )
 except Exception as e:
     st.error(f"Failed to initialize ChromaDB: {e}")
     st.stop()
+
+def delete_chroma_ids(ids: list[str]):
+    if not ids:
+        return
+    try:
+        chroma_collection.delete(ids=ids)
+    except Exception as e:
+        st.warning(f"Could not delete some local index entries: {e}")
+
+def cleanup_local_artifacts(source: dict):
+    for path_key in ("file_path", "preview_path", "video_path"):
+        delete_blob(source.get(path_key))
+    source_id = source.get("source_id")
+    if source_id:
+        delete_source(source_id)
+
+def delete_current_corpus_from_chroma():
+    try:
+        existing = chroma_collection.get(where={"corpus_id": st.session_state.corpus_id})
+        for meta in existing.get("metadatas", []) or []:
+            cleanup_local_artifacts(meta or {})
+        delete_chroma_ids(existing.get("ids", []))
+    except Exception as e:
+        st.warning(f"Could not clear local index entries: {e}")
+
+if st.session_state.pending_delete_chroma_ids:
+    delete_chroma_ids(st.session_state.pending_delete_chroma_ids)
+    st.session_state.pending_delete_chroma_ids = []
+
+if st.session_state.pending_cleanup_paths:
+    for path in st.session_state.pending_cleanup_paths:
+        delete_blob(path)
+    st.session_state.pending_cleanup_paths = []
+
+if st.session_state.pending_clear_all:
+    delete_current_corpus_from_chroma()
+    st.session_state.doc_embeddings = []
+    st.session_state.doc_sources = []
+    st.session_state.messages = []
+    st.session_state.corpus_id = str(uuid.uuid4())
+    if st.session_state.google_store is not None and client is not None:
+        try:
+            client.file_search_stores.delete(name=st.session_state.google_store.name, config={'force': True})
+        except Exception as e:
+            st.warning(f"Could not delete Google File Search store: {e}")
+        st.session_state.google_store = None
+    st.session_state.pending_clear_all = False
+    st.rerun()
 
 # Google File Search helper
 def get_or_create_google_store():
@@ -256,10 +335,11 @@ def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str):
         # Add to UI state so it shows in the gallery
         doc_type = "pdf" if mime == "application/pdf" else ("audio" if "audio" in mime else ("video" if "video" in mime else "image"))
         st.session_state.doc_sources.append({
+            "source_id": str(uuid.uuid4()),
             "name": file_name,
             "type": doc_type,
-            "bytes": file_bytes,
             "mime": mime,
+            "backend": MANAGED_BACKEND,
         })
     except Exception as e:
         st.error(f"Google Upload Error for {file_name}: {e}")
@@ -293,6 +373,44 @@ def route_query(question: str) -> str:
         return "managed" if "managed" in answer else "local"
     except Exception:
         return "local"  # safe fallback
+
+
+def parse_caption_map(raw: str) -> dict[str, str]:
+    mapping = {}
+    for line in (raw or "").splitlines():
+        if "|" not in line:
+            continue
+        name, caption = line.split("|", 1)
+        name = name.strip()
+        caption = caption.strip()
+        if name and caption:
+            mapping[name] = caption
+    return mapping
+
+
+def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
+    try:
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                types.Part(text="Write a concise search caption for this image in one sentence."),
+            ],
+        )
+        return (resp.text or "").strip()
+    except Exception:
+        return ""
+
+
+def expand_query_variants(query: str) -> list[str]:
+    q = query.strip()
+    if not q:
+        return []
+    variants = {q}
+    if len(q.split()) <= 5:
+        variants.add(f"{q} details")
+        variants.add(f"explain {q}")
+    return [v for v in variants if v != q]
 
 
 # embedding helpers
@@ -367,10 +485,19 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         st.error(f"PDF embedding error: {e}")
         return []
 
+def extract_pdf_text(pdf_bytes: bytes) -> str:
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text = "\n".join(page.get_text("text") for page in doc)
+        doc.close()
+        return text.strip()
+    except Exception:
+        return ""
+
 # ── API limits ────────────────────────────────────────────────────────────────
 
-AUDIO_MAX_SECONDS = 80          # Gemini Embedding 2 hard limit for audio
-VIDEO_MAX_SECONDS = 80          # 80s for video-with-audio; 120s without — use conservative limit
+AUDIO_MAX_SECONDS = 80          # Gemini Embedding 2 hard limit for a single audio chunk
+VIDEO_MAX_SECONDS = 80          # Legacy limit kept for compatibility; long videos now chunked via frame sampling
 FRAME_INTERVAL_SEC = 5          # Extract a frame every N seconds for Deep Video Search
 IMAGE_MAX_DIM = 4096            # Resize images above this dimension
 
@@ -428,6 +555,16 @@ def get_video_duration_seconds(video_bytes: bytes) -> float | None:
     finally:
         os.remove(tmp_path)
 
+
+def choose_frame_interval(duration_sec: float | None) -> int:
+    if not duration_sec:
+        return FRAME_INTERVAL_SEC
+    if duration_sec <= 120:
+        return 5
+    if duration_sec <= 600:
+        return 10
+    return 20
+
 def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
     """Resize an image that exceeds IMAGE_MAX_DIM using Pillow.
     Preserves aspect ratio. Returns original bytes if already within limit.
@@ -447,45 +584,50 @@ def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
         return image_bytes
 
 # ── Audio limit helper ────────────────────────────────────────────────────────
-def trim_audio_to_limit(audio_bytes: bytes, mime_type: str, max_seconds: int = AUDIO_MAX_SECONDS) -> bytes:
-    """Trim audio to max_seconds. WAV: uses built-in wave module.
-    MP3: byte-based estimate (constant bitrate assumption).
-    Returns original bytes if already within limit.
-    """
+def chunk_audio_bytes(audio_bytes: bytes, mime_type: str, chunk_seconds: int = AUDIO_MAX_SECONDS) -> list[tuple[bytes, float, float]]:
+    """Chunk audio into windows with timestamps; MP3 uses proportional chunking fallback."""
     if mime_type == "audio/wav":
         try:
             with wave.open(io.BytesIO(audio_bytes)) as wf:
                 framerate = wf.getframerate()
                 total_frames = wf.getnframes()
-                duration = total_frames / framerate
-                if duration <= max_seconds:
-                    return audio_bytes
-                max_frames = int(framerate * max_seconds)
-                wf.rewind()
                 params = wf.getparams()
-                frames = wf.readframes(max_frames)
-            buf = io.BytesIO()
-            with wave.open(buf, "wb") as out:
-                out.setparams(params)
-                out.writeframes(frames)
-            return buf.getvalue()
+                duration = total_frames / framerate
+                if duration <= chunk_seconds:
+                    return [(audio_bytes, 0.0, duration)]
+                windows = []
+                start_sec = 0.0
+                while start_sec < duration:
+                    start_frame = int(start_sec * framerate)
+                    end_frame = int(min((start_sec + chunk_seconds), duration) * framerate)
+                    wf.setpos(start_frame)
+                    frames = wf.readframes(end_frame - start_frame)
+                    buf = io.BytesIO()
+                    with wave.open(buf, "wb") as out:
+                        out.setparams(params)
+                        out.writeframes(frames)
+                    windows.append((buf.getvalue(), start_sec, min(start_sec + chunk_seconds, duration)))
+                    start_sec += chunk_seconds
+                return windows
         except Exception:
-            return audio_bytes
-    elif mime_type == "audio/mp3":
-        # Rough trim by byte proportion (assumes constant bitrate)
-        # 128kbps CBR: ~16KB/s. Estimate duration from file size.
-        estimated_duration = len(audio_bytes) / 16_000
-        if estimated_duration <= max_seconds:
-            return audio_bytes
-        trim_ratio = max_seconds / estimated_duration
-        return audio_bytes[:int(len(audio_bytes) * trim_ratio)]
-    return audio_bytes
+            return [(audio_bytes, 0.0, float(chunk_seconds))]
+    estimated_duration = len(audio_bytes) / 16_000
+    if estimated_duration <= chunk_seconds:
+        return [(audio_bytes, 0.0, estimated_duration)]
+    windows = []
+    start_sec = 0.0
+    while start_sec < estimated_duration:
+        end_sec = min(start_sec + chunk_seconds, estimated_duration)
+        start_byte = int((start_sec / estimated_duration) * len(audio_bytes))
+        end_byte = int((end_sec / estimated_duration) * len(audio_bytes))
+        windows.append((audio_bytes[start_byte:end_byte], start_sec, end_sec))
+        start_sec += chunk_seconds
+    return windows
 
 def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     """Embed an audio file using Gemini Embedding 2 (max 80 seconds).
     Automatically trims to 80s if the file is longer.
     """
-    audio_bytes = trim_audio_to_limit(audio_bytes, mime_type)
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
@@ -519,34 +661,73 @@ def embed_video(video_bytes: bytes, mime_type: str) -> np.ndarray | None:
 
 
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
-                 preview_bytes: bytes | None = None, video_bytes: bytes | None = None):
+                 preview_bytes: bytes | None = None, video_path: str | None = None,
+                 searchable_text: str = "", source_meta: dict | None = None):
     """Helper to add an embedding to ChromaDB and session state."""
     doc_id = str(uuid.uuid4())
     try:
-        b64_data = base64.b64encode(file_bytes).decode('utf-8')
-        metadata: dict = {"name": name, "type": doc_type, "mime": mime, "data_b64": b64_data}
+        file_path = persist_blob(file_bytes, mime, name)
+        metadata: dict = {
+            "name": name,
+            "type": doc_type,
+            "mime": mime,
+            "file_path": file_path,
+            "corpus_id": st.session_state.corpus_id,
+            "searchable_text": searchable_text or name,
+        }
         if preview_bytes:
-            metadata["preview_b64"] = base64.b64encode(preview_bytes).decode('utf-8')
+            metadata["preview_path"] = persist_blob(preview_bytes, "image/png", f"{name}_preview.png")
+        if video_path:
+            metadata["video_path"] = video_path
+        if source_meta:
+            metadata.update(source_meta)
         chroma_collection.upsert(
             ids=[doc_id],
             embeddings=[emb.tolist()],
             metadatas=[metadata]
         )
+        source_id = metadata.get("source_id") or str(uuid.uuid4())
+        metadata["source_id"] = source_id
         st.session_state.doc_embeddings.append(emb)
-        st.session_state.doc_sources.append({
+        source_row = {
+            "source_id": source_id,
             "id": doc_id,
             "name": name,
             "type": doc_type,
-            "bytes": file_bytes,
             "mime": mime,
-            "preview_bytes": preview_bytes,
-            "video_bytes": video_bytes,
+            "file_path": metadata["file_path"],
+            "preview_path": metadata.get("preview_path"),
+            "video_path": metadata.get("video_path"),
+            "backend": "local",
+            "searchable_text": searchable_text or name,
+        }
+        if source_meta:
+            source_row.update(source_meta)
+        st.session_state.doc_sources.append(source_row)
+        upsert_source({
+            "source_id": source_id,
+            "doc_id": doc_id,
+            "name": name,
+            "type": doc_type,
+            "backend": "local",
+            "mime": mime,
+            "file_path": metadata["file_path"],
+            "preview_path": metadata.get("preview_path"),
+            "video_path": metadata.get("video_path"),
+            "searchable_text": searchable_text or name,
+            "corpus_id": st.session_state.corpus_id,
+            "timestamp_start_sec": (source_meta or {}).get("timestamp_start_sec"),
+            "timestamp_end_sec": (source_meta or {}).get("timestamp_end_sec"),
+            "page_range": (source_meta or {}).get("page_range"),
+            "caption": (source_meta or {}).get("caption"),
+            "transcript": (source_meta or {}).get("transcript", ""),
+            "chroma_ids": [doc_id],
         })
     except Exception as e:
         st.error(f"Error saving to database: {e}")
 
-def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, bytes]]:
-    """Split a PDF into chunks of up to chunk_size pages using PyMuPDF.
+def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 4, overlap_pages: int = 1) -> list[tuple[bytes, str, bytes]]:
+    """Split a PDF into overlapping page windows using PyMuPDF.
 
     Returns a list of (chunk_pdf_bytes, page_range_label, preview_png_bytes).
     preview_png_bytes is a rendered image of the first page of that chunk at 72 DPI.
@@ -555,7 +736,8 @@ def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, b
     total_pages = src_doc.page_count
     chunks = []
 
-    for start in range(0, total_pages, chunk_size):
+    step = max(1, chunk_size - overlap_pages)
+    for start in range(0, total_pages, step):
         end = min(start + chunk_size, total_pages)
 
         # Build a sub-document for this page range
@@ -575,6 +757,8 @@ def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, b
             label = "page 1" if total_pages == 1 else f"pages 1\u2013{total_pages}"
 
         chunks.append((chunk_bytes, label, preview_png))
+        if end == total_pages:
+            break
 
     src_doc.close()
     return chunks
@@ -582,17 +766,22 @@ def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 6) -> list[tuple[bytes, str, b
 def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> list[dict]:
     """Embed query and query ChromaDB for top-K results."""
     try:
-        if chroma_collection.count() == 0:
+        corpus_docs = chroma_collection.get(where={"corpus_id": st.session_state.corpus_id})
+        if not corpus_docs.get("ids"):
             return []
     except Exception:
         return []
+
+    effective_query = query or ""
+    variants = expand_query_variants(effective_query)
+    expanded_query = " ".join([effective_query, *variants]).strip()
 
     if query_emb is None and query:
         dim = st.session_state.get("embedding_dim", 3072)
         try:
             result = client.models.embed_content(
                 model="gemini-embedding-2-preview",
-                contents=query,
+                contents=expanded_query or query,
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_QUERY",
                     output_dimensionality=dim,
@@ -605,43 +794,88 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
     elif query_emb is None:
         return []
 
+    candidate_count = min(max(top_k * 4, top_k), len(corpus_docs["ids"]))
+
     # Query Chroma
     try:
         results = chroma_collection.query(
             query_embeddings=[query_emb.tolist()],
-            n_results=min(top_k, chroma_collection.count())
+            n_results=candidate_count,
+            where={"corpus_id": st.session_state.corpus_id},
         )
     except Exception as e:
         st.error(f"Database query error: {e}")
         return []
     
+    corpus_metas = corpus_docs.get("metadatas") or []
+    sparse_docs = [
+        {"id": doc_id, "searchable_text": meta.get("searchable_text", meta.get("name", ""))}
+        for doc_id, meta in zip(corpus_docs["ids"], corpus_metas)
+        if meta
+    ]
+    dense_ids = results["ids"][0] if results and results.get("ids") and results["ids"] else []
+    sparse_ids = [doc_id for doc_id, _ in bm25_rank(expanded_query or query or "", sparse_docs)[:candidate_count]]
+    fused_ids = reciprocal_rank_fusion([dense_ids, sparse_ids])[:top_k]
+    fused_position = {doc_id: rank for rank, doc_id in enumerate(fused_ids)}
+
+    result_rows = []
+    if dense_ids:
+        for i, doc_id in enumerate(dense_ids):
+            result_rows.append((
+                doc_id,
+                results["metadatas"][0][i],
+                results["distances"][0][i] if "distances" in results and results["distances"] else 0.0,
+            ))
+
+    missing_ids = [doc_id for doc_id in fused_ids if doc_id not in dense_ids]
+    if missing_ids:
+        try:
+            sparse_only = chroma_collection.get(ids=missing_ids)
+            for doc_id, meta in zip(sparse_only.get("ids", []), sparse_only.get("metadatas", [])):
+                result_rows.append((doc_id, meta, 1.0))
+        except Exception as e:
+            st.warning(f"Could not load keyword-only matches: {e}")
+
+    result_rows.sort(key=lambda row: fused_position.get(row[0], len(fused_position)))
+
     # Format the results
     out = []
-    if results and results.get("ids") and results["ids"][0]:
-        for i, doc_id in enumerate(results["ids"][0]):
-            meta = results["metadatas"][0][i]
-            dist = results["distances"][0][i] if "distances" in results and results["distances"] else 0.0
-            
-            # Reconstruct the file bytes from base64 stored in metadata
+    for doc_id, meta, dist in result_rows[:top_k]:
+        # Preferred path-based storage with fallback to legacy base64 metadata.
+        file_bytes = read_blob(meta.get("file_path"))
+        if not file_bytes:
             b64_data = meta.get("data_b64", "")
             file_bytes = base64.b64decode(b64_data) if b64_data else b""
 
-            # Decode the PDF page preview thumbnail (may be absent for older entries)
+        preview_bytes = read_blob(meta.get("preview_path"))
+        if not preview_bytes:
             preview_b64 = meta.get("preview_b64", "")
             preview_bytes = base64.b64decode(preview_b64) if preview_b64 else None
 
-            out.append({
-                "id": doc_id,
-                "name": meta.get("name", "Unknown Document"),
-                "type": meta.get("type", "unknown"),
-                "mime": meta.get("mime", "application/octet-stream"),
-                "bytes": file_bytes,
-                "preview_bytes": preview_bytes,
-                "score": 1.0 - dist  # Chroma returns cosine distance; metric is 1 - similarity
-            })
+        video_bytes = read_blob(meta.get("video_path"))
+
+        out.append({
+            "source_id": meta.get("source_id"),
+            "id": doc_id,
+            "name": meta.get("name", "Unknown Document"),
+            "type": meta.get("type", "unknown"),
+            "mime": meta.get("mime", "application/octet-stream"),
+            "bytes": file_bytes,
+            "preview_bytes": preview_bytes,
+            "video_bytes": video_bytes if video_bytes else None,
+            "score": 1.0 - dist,  # Chroma returns cosine distance; metric is 1 - similarity
+            "searchable_text": meta.get("searchable_text", ""),
+        })
+    # Light rerank pass combining dense score and lexical overlap with query terms.
+    query_terms = set(re.findall(r"[a-z0-9_]+", (expanded_query or "").lower()))
+    for row in out:
+        text_terms = set(re.findall(r"[a-z0-9_]+", row.get("searchable_text", "").lower()))
+        overlap = len(query_terms & text_terms) / max(1, len(query_terms))
+        row["rerank_score"] = row.get("score", 0.0) * 0.8 + overlap * 0.2
+    out.sort(key=lambda r: r.get("rerank_score", 0.0), reverse=True)
     return out
 
-def answer(question: str, image_bytes: bytes, mime_type: str,
+def answer(question: str, selected_results: list[dict],
            history: list[dict] | None = None):
     """Stream a grounded answer from Gemini 2.5 Flash, with optional conversation history.
 
@@ -655,12 +889,19 @@ def answer(question: str, image_bytes: bytes, mime_type: str,
             role = "user" if msg["role"] == "user" else "model"
             contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
     # Append current turn: retrieved document + the question
+    prompt = build_local_answer_prompt(question, selected_results)
+    parts = []
+    for result in selected_results:
+        parts.append(types.Part(text=f"Source [{result['citation_id']}] content follows."))
+        if result.get("bytes"):
+            parts.append(types.Part.from_bytes(
+                data=result["bytes"],
+                mime_type=result.get("mime", "application/octet-stream"),
+            ))
+    parts.append(types.Part(text=prompt))
     contents.append(types.Content(
         role="user",
-        parts=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            types.Part(text=question),
-        ],
+        parts=parts,
     ))
     try:
         stream = client.models.generate_content_stream(
@@ -763,13 +1004,18 @@ def load_sample_images():
             progress.progress(i / len(to_load), text=f"Embedding {name}...")
             emb = embed_image(img_bytes, mime_type=mime)
             if emb is not None:
-                add_document(emb, name, "image", mime, img_bytes)
+                add_document(emb, name, "image", mime, img_bytes,
+                             searchable_text=name)
         except Exception as e:
             st.warning(f"Could not load {name}: {e}")
 
     progress.progress(1.0, text="Done!")
     progress.empty()
     st.success(f"Loaded {len(to_load)} sample image(s).")
+
+if st.session_state.load_samples_requested:
+    st.session_state.load_samples_requested = False
+    load_sample_images()
 
 # about expander
 with st.expander("ℹ️ About this app"):
@@ -787,12 +1033,13 @@ with st.expander("ℹ️ About this app"):
     | Video | MP4, MOV | 80 seconds | Rejected with warning |
 
     **How it works:** Upload content → Gemini Embedding 2 vectorizes it → your question is
-    embedded and scored against all vectors via cosine similarity → top result is passed to
+    embedded and scored against all vectors via cosine similarity → top retrieved results are passed to
     Gemini Flash for a grounded answer.
     """)
 
 # process uploads from sidebar
 if uploaded_files:
+    per_file_captions = parse_caption_map(image_captions_map_raw)
     loaded_base_names = {s["name"].split(" · ")[0] for s in st.session_state.doc_sources}
     new_files = [f for f in uploaded_files if f.name not in loaded_base_names]
 
@@ -806,42 +1053,71 @@ if uploaded_files:
                 add_file_to_google_store(file.name, file_bytes, mime)
             elif mime == "application/pdf":
                 for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
+                    chunk_text = extract_pdf_text(chunk_bytes)
                     for emb in embed_pdf(chunk_bytes):
                         add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
-                                     preview_bytes=preview_png)
+                                     preview_bytes=preview_png,
+                                     searchable_text=f"{file.name} {page_label}\n{chunk_text}",
+                                     source_meta={"page_range": page_label})
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
-                emb = embed_audio(file_bytes, mime_type=audio_mime)
-                if emb is not None:
-                    add_document(emb, file.name, "audio", mime, file_bytes)
+                audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
+                for chunk_idx, (chunk_bytes, start_sec, end_sec) in enumerate(audio_chunks, start=1):
+                    emb = embed_audio(chunk_bytes, mime_type=audio_mime)
+                    if emb is not None:
+                        label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
+                        add_document(
+                            emb,
+                            label,
+                            "audio",
+                            mime,
+                            chunk_bytes,
+                            searchable_text=f"{file.name} audio {format_timestamp(start_sec)} {format_timestamp(end_sec)}",
+                            source_meta={
+                                "timestamp_start_sec": start_sec,
+                                "timestamp_end_sec": end_sec,
+                                "transcript": "",
+                            },
+                        )
             elif mime in ("video/mp4", "video/quicktime"):
                 duration = get_video_duration_seconds(file_bytes)
                 if duration is not None and duration > VIDEO_MAX_SECONDS:
-                    st.sidebar.warning(f"⏱️ {file.name} exceeds {VIDEO_MAX_SECONDS}s limit.")
-                else:
-                    frames = extract_video_frames(file_bytes)
-                    for frame_png, ts in frames:
-                        emb = embed_image(frame_png, mime_type="image/png")
-                        if emb is not None:
-                            add_document(
-                                emb,
-                                f"{file.name} · {format_timestamp(ts)}",
-                                "video_frame",
-                                mime,
-                                file_bytes=frame_png,
-                                preview_bytes=frame_png,
-                                video_bytes=file_bytes
-                            )
+                    st.sidebar.info(f"⏱️ {file.name} is long; using adaptive frame sampling.")
+                stored_video_path = persist_blob(file_bytes, mime, file.name)
+                interval = choose_frame_interval(duration)
+                frames = extract_video_frames(file_bytes, interval_sec=interval)
+                for frame_png, ts in frames:
+                    emb = embed_image(frame_png, mime_type="image/png")
+                    if emb is not None:
+                        add_document(
+                            emb,
+                            f"{file.name} · {format_timestamp(ts)}",
+                            "video_frame",
+                            "image/png",
+                            file_bytes=frame_png,
+                            preview_bytes=frame_png,
+                            video_path=stored_video_path,
+                            searchable_text=f"{file.name} frame timestamp {format_timestamp(ts)}",
+                            source_meta={
+                                "timestamp_start_sec": ts,
+                                "timestamp_end_sec": ts + interval,
+                                "transcript": "",
+                            },
+                        )
 
             else:
-                cap = image_caption
+                cap = per_file_captions.get(file.name, image_caption)
+                if not cap and auto_caption_images:
+                    cap = auto_caption_image(file_bytes, mime)
                 if cap:
                     emb = embed_image_with_caption(file_bytes, caption=cap, mime_type=mime)
                 else:
                     emb = embed_image(file_bytes, mime_type=mime)
                 if emb is not None:
                     label = f"{file.name} · {cap}" if cap else file.name
-                    add_document(emb, label, "image", mime, file_bytes)
+                    add_document(emb, label, "image", mime, file_bytes,
+                                 searchable_text=f"{file.name} {cap or ''}",
+                                 source_meta={"caption": cap or ""})
 
             progress.progress((i + 1) / len(new_files), text=f"Processed {file.name}")
 
@@ -878,11 +1154,44 @@ def render_results_gallery(results, show_score=False):
             else:
                 st.markdown("📄")
             
+            citation_prefix = f"[{res['citation_id']}] " if res.get("citation_id") else ""
             if show_score:
-                st.caption(f"**{res.get('name', 'Unknown')}**")
+                st.caption(f"**{citation_prefix}{res.get('name', 'Unknown')}**")
                 st.caption(f"Score: `{res.get('score', 0):.4f}`")
             else:
-                st.caption(res.get("name", "Unknown"))
+                st.caption(f"{citation_prefix}{res.get('name', 'Unknown')}")
+
+
+def render_source_detail_panel():
+    source_id = st.session_state.get("selected_citation_source_id")
+    if not source_id:
+        return
+    all_sources = list_sources(st.session_state.corpus_id)
+    source = next((s for s in all_sources if s.get("source_id") == source_id), None)
+    if not source:
+        return
+    with st.expander("Selected Source Detail", expanded=True):
+        st.caption(f"Source ID: {source.get('source_id')}")
+        st.caption(f"Type: {source.get('type')}")
+        if source.get("page_range"):
+            st.caption(f"Page range: {source.get('page_range')}")
+        if source.get("timestamp_start_sec") is not None:
+            start = format_timestamp(float(source.get("timestamp_start_sec", 0)))
+            end = format_timestamp(float(source.get("timestamp_end_sec", source.get("timestamp_start_sec", 0))))
+            st.caption(f"Timestamp: {start}-{end}")
+        if source.get("caption"):
+            st.caption(f"Caption: {source.get('caption')}")
+        preview = read_blob(source.get("preview_path"))
+        payload = read_blob(source.get("file_path"))
+        video = read_blob(source.get("video_path"))
+        if source.get("type") == "pdf" and preview:
+            st.image(preview, width="stretch")
+        elif source.get("type") in ("image", "video_frame") and preview:
+            st.image(preview, width="stretch")
+        elif source.get("type") == "audio" and payload:
+            st.audio(payload, format=source.get("mime"))
+        if video:
+            st.video(video)
 
 st.markdown("---")
 st.subheader("💬 Chat with your Documents")
@@ -947,21 +1256,30 @@ else:
 
             with st.chat_message("assistant"):
                 if results:
-                    top = results[0]
+                    selected_results = select_context_results(results, max_results=top_k)
                     full_text = st.write_stream(
-                        answer(query, top["bytes"], top["mime"],
+                        answer(query, selected_results,
                                history=st.session_state.messages)
                     )
-                    st.caption(f"Based on: **{top['name']}** (score: `{top['score']:.4f}`)")
+                    source_labels = [
+                        f"[{res['citation_id']}] {res['name']}" for res in selected_results
+                    ]
+                    st.caption(f"Based on: {', '.join(source_labels)}")
+                    for src in selected_results:
+                        source_id = src.get("source_id")
+                        if source_id and st.button(f"Open {src['citation_id']}", key=f"open_src_{source_id}"):
+                            st.session_state.selected_citation_source_id = source_id
+                            st.rerun()
                     if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
                         st.session_state.tts_pending = full_text
                         st.rerun()
-                    render_results_gallery(results)
+                    render_results_gallery(selected_results)
+                    render_source_detail_panel()
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": full_text,
-                        "results": results,
-                        "citations": [],
+                        "results": selected_results,
+                        "citations": source_labels,
                     })
                 else:
                     msg = "No results found — try rephrasing your question."

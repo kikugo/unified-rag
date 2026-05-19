@@ -43,8 +43,8 @@ My professor recently reviewed the codebase and pointed out some real embarrassm
 
 Here is the hit-list of upgrades I need to work on:
 
-- **Stop throwing away Top-K context**: Right now, the app pulls the Top-3 results but I only pass the #1 hit to the LLM context. Gemini has a massive token window, so I'm basically wasting it. I need to feed it everything I retrieve.
-- **BM25 Sparse Retrieval**: I need to fuse my Chroma dense vectors with a standard BM25 keyword index using Reciprocal Rank Fusion (RRF). This should stop the exact-match queries from failing.
+- **Improve Top-K context**: The local answer path now passes the retrieved result set to Gemini with source IDs, but I still need better citation click-through and a larger measured context strategy.
+- **BM25 Sparse Retrieval**: Basic BM25 + Reciprocal Rank Fusion is now wired into local retrieval. Next step is measuring it with a gold-set evaluation harness.
 - **Fixing PDF boundaries**: I'm currently chunking PDFs at a hard 6-page limit, which eventually cuts a sentence or chart in half. I'm debating between using proper semantic chunking (with a library like `semchunk`), or just taking the easy route and using a sliding window with a 1-to-2 page overlap. Both feel better than what I have now.
 - **Temporal constraints on video frames**: Extracting video frames natively works fine, but the isolated image vectors have no concept of time. I wonder if I should construct a caption like "Video segment from 2:15-2:30" and embed that alongside the frame. In theory, questions about sequences might actually start working.
 - **Query Expansion (HyDE / Multi-query)**: I'm thinking about running a fast Flash call before search to draft a fake answer, and embedding that text instead of the user's short question. My professor also suggested splitting the query into three variants and averaging the vectors. I need to test if this tricks the vector space into matching much broader context.

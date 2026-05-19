@@ -1,0 +1,14 @@
+[
+  {
+    "query": "Tesla delivery",
+    "expected_ids": ["doc-tesla"]
+  },
+  {
+    "query": "revenue chart",
+    "expected_ids": ["doc-revenue"]
+  },
+  {
+    "query": "earnings 1:05",
+    "expected_ids": ["doc-video-ts"]
+  }
+]

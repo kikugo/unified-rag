@@ -150,3 +150,35 @@ def attach_transcript_metadata(
         existing = meta.get("searchable_text", "")
         meta["searchable_text"] = f"{existing}\n{transcript}".strip()
     return meta
+
+def parse_caption_map(raw: str) -> dict[str, str]:
+    mapping = {}
+    for line in (raw or "").splitlines():
+        if "|" not in line:
+            continue
+        name, caption = line.split("|", 1)
+        name = name.strip()
+        caption = caption.strip()
+        if name and caption:
+            mapping[name] = caption
+    return mapping
+
+
+def build_image_searchable_text(filename: str, caption: str = "") -> str:
+    return f"{filename} {caption or ''}".strip()
+
+
+def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        if max(w, h) <= IMAGE_MAX_DIM:
+            return image_bytes
+        ratio = IMAGE_MAX_DIM / max(w, h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        fmt = "JPEG" if mime_type in ("image/jpeg", "image/jpg") else "PNG"
+        img.save(buf, format=fmt)
+        return buf.getvalue()
+    except Exception:
+        return image_bytes

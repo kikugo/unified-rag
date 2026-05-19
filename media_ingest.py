@@ -72,3 +72,70 @@ def build_audio_searchable_text(filename: str, start_sec: float, end_sec: float,
     if transcript:
         return f"{base}\n{transcript}".strip()
     return base
+
+def get_video_duration_seconds(video_bytes: bytes) -> float | None:
+    import av
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+    try:
+        with av.open(tmp_path) as container:
+            if container.duration is not None:
+                return float(container.duration / av.time_base)
+            return None
+    except Exception:
+        return None
+    finally:
+        os.remove(tmp_path)
+
+
+def choose_frame_interval(duration_sec: float | None) -> int:
+    if not duration_sec:
+        return FRAME_INTERVAL_SEC
+    if duration_sec <= 120:
+        return 5
+    if duration_sec <= 600:
+        return 10
+    return 20
+
+
+def extract_video_frames(
+    video_bytes: bytes,
+    interval_sec: int = FRAME_INTERVAL_SEC,
+) -> list[tuple[bytes, float]]:
+    import av
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(video_bytes)
+        tmp_path = f.name
+    try:
+        container = av.open(tmp_path)
+        video_stream = next((s for s in container.streams if s.type == "video"), None)
+        if not video_stream:
+            return []
+        fps = float(video_stream.average_rate or 25)
+        interval_sec = max(1, interval_sec)
+        last_yielded_sec = -interval_sec
+        frames = []
+        for i, frame in enumerate(container.decode(video_stream)):
+            ts = float(frame.pts * video_stream.time_base) if frame.pts else i / fps
+            if ts - last_yielded_sec >= interval_sec:
+                img = frame.to_image()
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                frames.append((buf.getvalue(), ts))
+                last_yielded_sec = ts
+        container.close()
+        return frames
+    except Exception:
+        return []
+    finally:
+        os.remove(tmp_path)
+
+
+def build_video_frame_searchable_text(filename: str, timestamp_label: str, transcript: str = "") -> str:
+    base = f"{filename} frame timestamp {timestamp_label}"
+    if transcript:
+        return f"{base}\n{transcript}".strip()
+    return base

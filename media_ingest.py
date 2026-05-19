@@ -139,3 +139,14 @@ def build_video_frame_searchable_text(filename: str, timestamp_label: str, trans
     if transcript:
         return f"{base}\n{transcript}".strip()
     return base
+
+def attach_transcript_metadata(
+    base_meta: dict,
+    transcript: str = "",
+) -> dict:
+    meta = dict(base_meta)
+    meta["transcript"] = transcript or ""
+    if transcript:
+        existing = meta.get("searchable_text", "")
+        meta["searchable_text"] = f"{existing}\n{transcript}".strip()
+    return meta

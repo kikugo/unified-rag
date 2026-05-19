@@ -1,14 +1,10 @@
 import io
 import json
-import struct
-import wave
 import requests
 import re
 import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
-import fitz  # PyMuPDF
-import av
 import base64
 import uuid
 import tempfile
@@ -21,9 +17,28 @@ from rag_core import (
     MANAGED_BACKEND,
     bm25_rank,
     build_local_answer_prompt,
+    expand_query_variants,
     pop_source_and_embedding,
     reciprocal_rank_fusion,
     select_context_results,
+)
+from media_ingest import (
+    AUDIO_MAX_SECONDS,
+    FRAME_INTERVAL_SEC,
+    VIDEO_MAX_SECONDS,
+    attach_transcript_metadata,
+    build_audio_searchable_text,
+    build_image_searchable_text,
+    build_video_frame_searchable_text,
+    choose_frame_interval,
+    chunk_audio_bytes,
+    chunk_pdf,
+    extract_pdf_text,
+    extract_video_frames,
+    format_timestamp,
+    get_video_duration_seconds,
+    parse_caption_map,
+    resize_image_if_needed,
 )
 from storage import delete_blob, persist_blob, read_blob
 from source_registry import delete_source, list_sources, upsert_source
@@ -375,19 +390,6 @@ def route_query(question: str) -> str:
         return "local"  # safe fallback
 
 
-def parse_caption_map(raw: str) -> dict[str, str]:
-    mapping = {}
-    for line in (raw or "").splitlines():
-        if "|" not in line:
-            continue
-        name, caption = line.split("|", 1)
-        name = name.strip()
-        caption = caption.strip()
-        if name and caption:
-            mapping[name] = caption
-    return mapping
-
-
 def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
     try:
         resp = client.models.generate_content(
@@ -400,17 +402,6 @@ def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
         return (resp.text or "").strip()
     except Exception:
         return ""
-
-
-def expand_query_variants(query: str) -> list[str]:
-    q = query.strip()
-    if not q:
-        return []
-    variants = {q}
-    if len(q.split()) <= 5:
-        variants.add(f"{q} details")
-        variants.add(f"explain {q}")
-    return [v for v in variants if v != q]
 
 
 # embedding helpers
@@ -484,145 +475,6 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     except Exception as e:
         st.error(f"PDF embedding error: {e}")
         return []
-
-def extract_pdf_text(pdf_bytes: bytes) -> str:
-    try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text = "\n".join(page.get_text("text") for page in doc)
-        doc.close()
-        return text.strip()
-    except Exception:
-        return ""
-
-# ── API limits ────────────────────────────────────────────────────────────────
-
-AUDIO_MAX_SECONDS = 80          # Gemini Embedding 2 hard limit for a single audio chunk
-VIDEO_MAX_SECONDS = 80          # Legacy limit kept for compatibility; long videos now chunked via frame sampling
-FRAME_INTERVAL_SEC = 5          # Extract a frame every N seconds for Deep Video Search
-IMAGE_MAX_DIM = 4096            # Resize images above this dimension
-
-def extract_video_frames(video_bytes: bytes, interval_sec: int = FRAME_INTERVAL_SEC) -> list[tuple[bytes, float]]:
-    """Extract frames from an MP4/MOV at a given interval using PyAV.
-    Yields (frame_png_bytes, timestamp_sec) tuples.
-    """
-    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-        f.write(video_bytes)
-        tmp_path = f.name
-    try:
-        container = av.open(tmp_path)
-        video_stream = next((s for s in container.streams if s.type == "video"), None)
-        if not video_stream:
-            return []
-        fps = float(video_stream.average_rate or 25)
-        # Avoid zero/negative interval sizes
-        interval_sec = max(1, interval_sec)
-        last_yielded_sec = -interval_sec
-        frames = []
-        for i, frame in enumerate(container.decode(video_stream)):
-            ts = float(frame.pts * video_stream.time_base) if frame.pts else i / fps
-            if ts - last_yielded_sec >= interval_sec:
-                img = frame.to_image()                  # PIL Image
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                frames.append((buf.getvalue(), ts))
-                last_yielded_sec = ts
-        container.close()
-        return frames
-    except Exception as e:
-        print(f"Error extracting video frames: {e}")
-        return []
-    finally:
-        os.remove(tmp_path)
-
-def format_timestamp(sec: float) -> str:
-    """Convert seconds into MM:SS format."""
-    m = int(sec // 60)
-    s = int(sec % 60)
-    return f"{m}:{s:02d}"
-
-def get_video_duration_seconds(video_bytes: bytes) -> float | None:
-    """Use PyAV to extract duration in seconds."""
-    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-        tmp.write(video_bytes)
-        tmp_path = tmp.name
-    try:
-        with av.open(tmp_path) as container:
-            if container.duration is not None:
-                return float(container.duration / av.time_base)
-            return None
-    except Exception:
-        return None
-    finally:
-        os.remove(tmp_path)
-
-
-def choose_frame_interval(duration_sec: float | None) -> int:
-    if not duration_sec:
-        return FRAME_INTERVAL_SEC
-    if duration_sec <= 120:
-        return 5
-    if duration_sec <= 600:
-        return 10
-    return 20
-
-def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
-    """Resize an image that exceeds IMAGE_MAX_DIM using Pillow.
-    Preserves aspect ratio. Returns original bytes if already within limit.
-    """
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-        w, h = img.size
-        if max(w, h) <= IMAGE_MAX_DIM:
-            return image_bytes
-        ratio = IMAGE_MAX_DIM / max(w, h)
-        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-        buf = io.BytesIO()
-        fmt = "JPEG" if mime_type in ("image/jpeg", "image/jpg") else "PNG"
-        img.save(buf, format=fmt)
-        return buf.getvalue()
-    except Exception:
-        return image_bytes
-
-# ── Audio limit helper ────────────────────────────────────────────────────────
-def chunk_audio_bytes(audio_bytes: bytes, mime_type: str, chunk_seconds: int = AUDIO_MAX_SECONDS) -> list[tuple[bytes, float, float]]:
-    """Chunk audio into windows with timestamps; MP3 uses proportional chunking fallback."""
-    if mime_type == "audio/wav":
-        try:
-            with wave.open(io.BytesIO(audio_bytes)) as wf:
-                framerate = wf.getframerate()
-                total_frames = wf.getnframes()
-                params = wf.getparams()
-                duration = total_frames / framerate
-                if duration <= chunk_seconds:
-                    return [(audio_bytes, 0.0, duration)]
-                windows = []
-                start_sec = 0.0
-                while start_sec < duration:
-                    start_frame = int(start_sec * framerate)
-                    end_frame = int(min((start_sec + chunk_seconds), duration) * framerate)
-                    wf.setpos(start_frame)
-                    frames = wf.readframes(end_frame - start_frame)
-                    buf = io.BytesIO()
-                    with wave.open(buf, "wb") as out:
-                        out.setparams(params)
-                        out.writeframes(frames)
-                    windows.append((buf.getvalue(), start_sec, min(start_sec + chunk_seconds, duration)))
-                    start_sec += chunk_seconds
-                return windows
-        except Exception:
-            return [(audio_bytes, 0.0, float(chunk_seconds))]
-    estimated_duration = len(audio_bytes) / 16_000
-    if estimated_duration <= chunk_seconds:
-        return [(audio_bytes, 0.0, estimated_duration)]
-    windows = []
-    start_sec = 0.0
-    while start_sec < estimated_duration:
-        end_sec = min(start_sec + chunk_seconds, estimated_duration)
-        start_byte = int((start_sec / estimated_duration) * len(audio_bytes))
-        end_byte = int((end_sec / estimated_duration) * len(audio_bytes))
-        windows.append((audio_bytes[start_byte:end_byte], start_sec, end_sec))
-        start_sec += chunk_seconds
-    return windows
 
 def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     """Embed an audio file using Gemini Embedding 2 (max 80 seconds).
@@ -725,43 +577,6 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
         })
     except Exception as e:
         st.error(f"Error saving to database: {e}")
-
-def chunk_pdf(pdf_bytes: bytes, chunk_size: int = 4, overlap_pages: int = 1) -> list[tuple[bytes, str, bytes]]:
-    """Split a PDF into overlapping page windows using PyMuPDF.
-
-    Returns a list of (chunk_pdf_bytes, page_range_label, preview_png_bytes).
-    preview_png_bytes is a rendered image of the first page of that chunk at 72 DPI.
-    """
-    src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    total_pages = src_doc.page_count
-    chunks = []
-
-    step = max(1, chunk_size - overlap_pages)
-    for start in range(0, total_pages, step):
-        end = min(start + chunk_size, total_pages)
-
-        # Build a sub-document for this page range
-        chunk_doc = fitz.open()
-        chunk_doc.insert_pdf(src_doc, from_page=start, to_page=end - 1)
-        chunk_bytes = chunk_doc.tobytes()
-
-        # Render first page of the chunk as a PNG thumbnail
-        page = chunk_doc[0]
-        pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))  # 72 DPI
-        preview_png = pix.tobytes(output="png")
-        chunk_doc.close()
-
-        if total_pages > chunk_size:
-            label = f"pages {start + 1}\u2013{end}"
-        else:
-            label = "page 1" if total_pages == 1 else f"pages 1\u2013{total_pages}"
-
-        chunks.append((chunk_bytes, label, preview_png))
-        if end == total_pages:
-            break
-
-    src_doc.close()
-    return chunks
 
 def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> list[dict]:
     """Embed query and query ChromaDB for top-K results."""
@@ -1066,18 +881,23 @@ if uploaded_files:
                     emb = embed_audio(chunk_bytes, mime_type=audio_mime)
                     if emb is not None:
                         label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
+                        audio_meta = attach_transcript_metadata(
+                            {
+                                "timestamp_start_sec": start_sec,
+                                "timestamp_end_sec": end_sec,
+                            },
+                            transcript="",
+                        )
                         add_document(
                             emb,
                             label,
                             "audio",
                             mime,
                             chunk_bytes,
-                            searchable_text=f"{file.name} audio {format_timestamp(start_sec)} {format_timestamp(end_sec)}",
-                            source_meta={
-                                "timestamp_start_sec": start_sec,
-                                "timestamp_end_sec": end_sec,
-                                "transcript": "",
-                            },
+                            searchable_text=build_audio_searchable_text(
+                                file.name, start_sec, end_sec, audio_meta.get("transcript", "")
+                            ),
+                            source_meta=audio_meta,
                         )
             elif mime in ("video/mp4", "video/quicktime"):
                 duration = get_video_duration_seconds(file_bytes)
@@ -1089,20 +909,26 @@ if uploaded_files:
                 for frame_png, ts in frames:
                     emb = embed_image(frame_png, mime_type="image/png")
                     if emb is not None:
+                        ts_label = format_timestamp(ts)
+                        video_meta = attach_transcript_metadata(
+                            {
+                                "timestamp_start_sec": ts,
+                                "timestamp_end_sec": ts + interval,
+                            },
+                            transcript="",
+                        )
                         add_document(
                             emb,
-                            f"{file.name} · {format_timestamp(ts)}",
+                            f"{file.name} · {ts_label}",
                             "video_frame",
                             "image/png",
                             file_bytes=frame_png,
                             preview_bytes=frame_png,
                             video_path=stored_video_path,
-                            searchable_text=f"{file.name} frame timestamp {format_timestamp(ts)}",
-                            source_meta={
-                                "timestamp_start_sec": ts,
-                                "timestamp_end_sec": ts + interval,
-                                "transcript": "",
-                            },
+                            searchable_text=build_video_frame_searchable_text(
+                                file.name, ts_label, video_meta.get("transcript", "")
+                            ),
+                            source_meta=video_meta,
                         )
 
             else:
@@ -1116,7 +942,7 @@ if uploaded_files:
                 if emb is not None:
                     label = f"{file.name} · {cap}" if cap else file.name
                     add_document(emb, label, "image", mime, file_bytes,
-                                 searchable_text=f"{file.name} {cap or ''}",
+                                 searchable_text=build_image_searchable_text(file.name, cap or ""),
                                  source_meta={"caption": cap or ""})
 
             progress.progress((i + 1) / len(new_files), text=f"Processed {file.name}")

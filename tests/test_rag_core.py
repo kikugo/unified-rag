@@ -3,6 +3,8 @@ import unittest
 from rag_core import (
     bm25_rank,
     build_local_answer_prompt,
+    call_with_retry,
+    is_rate_limit_error,
     reciprocal_rank_fusion,
     tokenize_for_search,
     pop_source_and_embedding,
@@ -97,6 +99,51 @@ class RagCoreTest(unittest.TestCase):
 
         self.assertEqual(fused[0], "shared")
         self.assertEqual(set(fused), {"dense-top", "shared", "dense-third", "sparse-second"})
+
+    def test_is_rate_limit_error_matches_quota_and_429(self):
+        self.assertTrue(is_rate_limit_error(Exception("429 RESOURCE_EXHAUSTED")))
+        self.assertTrue(is_rate_limit_error(Exception("Quota exceeded for requests")))
+        self.assertFalse(is_rate_limit_error(Exception("400 invalid argument")))
+
+    def test_call_with_retry_returns_first_success_without_sleeping(self):
+        sleeps = []
+        result = call_with_retry(lambda: "ok", sleep=sleeps.append)
+        self.assertEqual(result, "ok")
+        self.assertEqual(sleeps, [])
+
+    def test_call_with_retry_retries_rate_limit_then_succeeds(self):
+        sleeps = []
+        calls = {"n": 0}
+
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise Exception("429 rate limit")
+            return "done"
+
+        result = call_with_retry(flaky, attempts=3, base_delay=0.1, sleep=sleeps.append)
+        self.assertEqual(result, "done")
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(sleeps, [0.1, 0.2])
+
+    def test_call_with_retry_reraises_non_rate_limit_immediately(self):
+        calls = {"n": 0}
+
+        def boom():
+            calls["n"] += 1
+            raise ValueError("400 bad request")
+
+        with self.assertRaises(ValueError):
+            call_with_retry(boom, attempts=3, sleep=lambda _: None)
+        self.assertEqual(calls["n"], 1)
+
+    def test_call_with_retry_raises_after_exhausting_attempts(self):
+        with self.assertRaises(Exception):
+            call_with_retry(
+                lambda: (_ for _ in ()).throw(Exception("429")),
+                attempts=2,
+                sleep=lambda _: None,
+            )
 
 
 if __name__ == "__main__":

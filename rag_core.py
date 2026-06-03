@@ -3,12 +3,34 @@ from __future__ import annotations
 from copy import copy
 import math
 import re
-from typing import Any
+import time
+from typing import Any, Callable
 
 
 LOCAL_BACKEND = "local"
 MANAGED_BACKEND = "managed"
 TOKEN_RE = re.compile(r"[a-z0-9_]+", re.IGNORECASE)
+
+
+def is_rate_limit_error(error: Exception) -> bool:
+    """True when a Gemini error looks like a rate-limit / quota rejection."""
+    msg = str(error).lower()
+    return any(token in msg for token in ("429", "resource_exhausted", "rate limit", "quota"))
+
+
+def call_with_retry(fn: Callable, attempts: int = 3, base_delay: float = 1.0, sleep=time.sleep):
+    """Call fn(), retrying on rate-limit errors with exponential backoff.
+
+    Non-rate-limit errors raise immediately; rate-limit errors raise after the
+    final attempt. `sleep` is injectable so tests can run without real delays.
+    """
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception as error:
+            if attempt == attempts - 1 or not is_rate_limit_error(error):
+                raise
+            sleep(base_delay * (2 ** attempt))
 
 
 def is_local_source(source: dict[str, Any]) -> bool:

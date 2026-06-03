@@ -17,6 +17,7 @@ from rag_core import (
     MANAGED_BACKEND,
     bm25_rank,
     build_local_answer_prompt,
+    call_with_retry,
     pop_source_and_embedding,
     reciprocal_rank_fusion,
     select_context_results,
@@ -377,10 +378,10 @@ def route_query(question: str) -> str:
         "Reply with exactly one word: local OR managed"
     )
     try:
-        resp = client.models.generate_content(
+        resp = call_with_retry(lambda: client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
-        )
+        ))
         answer = resp.text.strip().lower()
         return "managed" if "managed" in answer else "local"
     except Exception:
@@ -407,13 +408,13 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
     image_bytes = resize_image_if_needed(image_bytes, mime_type)
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = client.models.embed_content(
+        result = call_with_retry(lambda: client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
-        )
+        ))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Embedding error: {e}")
@@ -425,7 +426,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
     """
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = client.models.embed_content(
+        result = call_with_retry(lambda: client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=types.Content(
                 parts=[
@@ -434,7 +435,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
                 ]
             ),
             config=types.EmbedContentConfig(output_dimensionality=dim),
-        )
+        ))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Embedding error: {e}")
@@ -444,13 +445,13 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     """Embed a single PDF chunk using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = client.models.embed_content(
+        result = call_with_retry(lambda: client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=[
                 types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
-        )
+        ))
         return [np.array(e.values) for e in result.embeddings]
     except Exception as e:
         st.error(f"PDF embedding error: {e}")
@@ -460,13 +461,13 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     """Embed an audio file using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = client.models.embed_content(
+        result = call_with_retry(lambda: client.models.embed_content(
             model="gemini-embedding-2-preview",
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
-        )
+        ))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Audio embedding error: {e}")
@@ -552,14 +553,14 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
     if query_emb is None and query:
         dim = st.session_state.get("embedding_dim", 3072)
         try:
-            result = client.models.embed_content(
+            result = call_with_retry(lambda: client.models.embed_content(
                 model="gemini-embedding-2-preview",
                 contents=effective_query or query,
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_QUERY",
                     output_dimensionality=dim,
                 ),
-            )
+            ))
             query_emb = np.array(result.embeddings[0].values)
         except Exception as e:
             st.error(f"Query embedding error: {e}")
@@ -1085,14 +1086,14 @@ if run_img_query and query_image_sidebar:
 
     with st.spinner("Embedding query image…"):
         try:
-            result = client.models.embed_content(
+            result = call_with_retry(lambda: client.models.embed_content(
                 model="gemini-embedding-2-preview",
                 contents=[types.Part.from_bytes(data=query_bytes, mime_type=query_mime)],
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_QUERY",
                     output_dimensionality=dim,
                 ),
-            )
+            ))
             query_emb = np.array(result.embeddings[0].values)
         except Exception as e:
             st.error(f"Query embedding error: {e}")

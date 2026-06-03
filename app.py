@@ -225,6 +225,12 @@ with st.sidebar:
         help="Example: chart1.png|Revenue by quarter",
     )
     auto_caption_images = st.checkbox("Auto-caption images when caption missing", value=True, key="auto_caption_images")
+    transcribe_audio = st.checkbox(
+        "Transcribe audio (speech-to-text)",
+        value=True,
+        key="transcribe_audio",
+        help="Use Gemini to transcribe each audio chunk so spoken words become searchable. Adds one API call per chunk.",
+    )
     uploaded_files = st.file_uploader(
         "Files",
         type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
@@ -398,6 +404,34 @@ def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
             ],
         )
         return (resp.text or "").strip()
+    except Exception:
+        return ""
+
+
+def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
+    """Best-effort speech-to-text for one audio chunk via Gemini.
+
+    Returns the transcript, or "" when there is no clear speech or on error. The
+    NO_SPEECH sentinel guards against the model echoing the prompt back on silent
+    or music-only audio. Audio-only for now; video stays frame-indexed.
+    """
+    prompt = (
+        "You are a speech-to-text transcriber. Transcribe the spoken words in this "
+        "audio verbatim. Output only the transcript text and nothing else. "
+        "If there is no clear speech, output exactly: NO_SPEECH"
+    )
+    try:
+        resp = call_with_retry(lambda: client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                types.Part(text=prompt),
+            ],
+        ))
+        text = (resp.text or "").strip()
+        if not text or text.upper().startswith("NO_SPEECH"):
+            return ""
+        return text
     except Exception:
         return ""
 
@@ -835,12 +869,13 @@ if uploaded_files:
                     emb = embed_audio(chunk_bytes, mime_type=audio_mime)
                     if emb is not None:
                         label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
+                        transcript = transcribe_audio_bytes(chunk_bytes, audio_mime) if transcribe_audio else ""
                         audio_meta = attach_transcript_metadata(
                             {
                                 "timestamp_start_sec": start_sec,
                                 "timestamp_end_sec": end_sec,
                             },
-                            transcript="",
+                            transcript=transcript,
                         )
                         add_document(
                             emb,

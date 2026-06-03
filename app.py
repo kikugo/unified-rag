@@ -1,7 +1,6 @@
 import io
 import json
 import requests
-import re
 import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
@@ -681,13 +680,8 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
             "score": 1.0 - dist,  # Chroma returns cosine distance; metric is 1 - similarity
             "searchable_text": meta.get("searchable_text", ""),
         })
-    # Light rerank pass combining dense score and lexical overlap with query terms.
-    query_terms = set(re.findall(r"[a-z0-9_]+", (expanded_query or "").lower()))
-    for row in out:
-        text_terms = set(re.findall(r"[a-z0-9_]+", row.get("searchable_text", "").lower()))
-        overlap = len(query_terms & text_terms) / max(1, len(query_terms))
-        row["rerank_score"] = row.get("score", 0.0) * 0.8 + overlap * 0.2
-    out.sort(key=lambda r: r.get("rerank_score", 0.0), reverse=True)
+    # Already ordered by RRF fusion above; a second sort here only penalized
+    # keyword-only hits (whose dense score is 0), so we trust the fused order.
     return out
 
 def answer(question: str, selected_results: list[dict],

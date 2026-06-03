@@ -639,6 +639,7 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
             "video_bytes": video_bytes if video_bytes else None,
             "score": 1.0 - dist,  # Chroma returns cosine distance; metric is 1 - similarity
             "searchable_text": meta.get("searchable_text", ""),
+            "timestamp_start_sec": meta.get("timestamp_start_sec"),
         })
     # Already ordered by RRF fusion above; a second sort here only penalized
     # keyword-only hits (whose dense score is 0), so we trust the fused order.
@@ -905,6 +906,14 @@ if uploaded_files:
     else:
         st.sidebar.info("All files already loaded.")
 
+def _seek_seconds(value) -> int:
+    """Coerce a stored timestamp into an int start_time for st.audio/st.video."""
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def render_results_gallery(results, show_score=False):
     if not results:
         return
@@ -920,16 +929,16 @@ def render_results_gallery(results, show_score=False):
                 else:
                     st.markdown("📄 PDF")
             elif res_type == "audio":
-                st.audio(res["bytes"], format=res.get("mime"))
+                st.audio(res["bytes"], format=res.get("mime"), start_time=_seek_seconds(res.get("timestamp_start_sec")))
             elif res_type == "video":
-                st.video(res["bytes"])
+                st.video(res["bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
             elif res_type == "video_frame":
                 if res.get("preview_bytes"):
                     st.image(res["preview_bytes"], width="stretch")
                 else:
                     st.markdown("🎞️ Frame")
                 if res.get("video_bytes"):
-                    st.video(res["video_bytes"])
+                    st.video(res["video_bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
             else:
                 st.markdown("📄")
             
@@ -968,9 +977,9 @@ def render_source_detail_panel():
         elif source.get("type") in ("image", "video_frame") and preview:
             st.image(preview, width="stretch")
         elif source.get("type") == "audio" and payload:
-            st.audio(payload, format=source.get("mime"))
+            st.audio(payload, format=source.get("mime"), start_time=_seek_seconds(source.get("timestamp_start_sec")))
         if video:
-            st.video(video)
+            st.video(video, start_time=_seek_seconds(source.get("timestamp_start_sec")))
 
 st.markdown("---")
 st.subheader("💬 Chat with your Documents")

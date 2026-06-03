@@ -3,7 +3,7 @@ import struct
 import unittest
 import wave
 
-from media_ingest import chunk_audio_bytes, format_timestamp
+from media_ingest import chunk_audio_bytes, format_timestamp, proportional_audio_windows
 
 
 class MediaAudioTest(unittest.TestCase):
@@ -34,6 +34,19 @@ class MediaAudioTest(unittest.TestCase):
 
     def test_format_timestamp(self):
         self.assertEqual(format_timestamp(75), "1:15")
+
+    def test_proportional_windows_cover_duration_with_monotonic_bytes(self):
+        windows = proportional_audio_windows(1000, 170.0, 80)
+        self.assertEqual([(round(s, 1), round(e, 1)) for _, _, s, e in windows],
+                         [(0.0, 80.0), (80.0, 160.0), (160.0, 170.0)])
+        # byte offsets are non-decreasing and stay within the blob
+        starts = [w[0] for w in windows]
+        ends = [w[1] for w in windows]
+        self.assertEqual(starts, sorted(starts))
+        self.assertEqual(ends[-1], 1000)
+
+    def test_proportional_windows_zero_duration_returns_whole_blob(self):
+        self.assertEqual(proportional_audio_windows(500, 0.0, 80), [(0, 500, 0.0, 0.0)])
 
 
 if __name__ == "__main__":

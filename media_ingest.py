@@ -191,12 +191,55 @@ def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
         return image_bytes
 
 
+def get_audio_duration_seconds(audio_bytes: bytes, suffix: str = ".mp3") -> float | None:
+    import av
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+    try:
+        with av.open(tmp_path) as container:
+            if container.duration is not None:
+                return float(container.duration / av.time_base)
+            return None
+    except Exception:
+        return None
+    finally:
+        os.remove(tmp_path)
+
+
+def proportional_audio_windows(
+    total_len: int, duration: float, chunk_seconds: float
+) -> list[tuple[int, int, float, float]]:
+    """Byte-range windows over a blob, paired with their time span.
+
+    Returns (start_byte, end_byte, start_sec, end_sec) tuples. Used for formats
+    we can time but not cheaply decode, so byte position tracks elapsed time.
+    """
+    if duration <= 0:
+        return [(0, total_len, 0.0, 0.0)]
+    windows = []
+    start_sec = 0.0
+    while start_sec < duration:
+        end_sec = min(start_sec + chunk_seconds, duration)
+        start_byte = int((start_sec / duration) * total_len)
+        end_byte = int((end_sec / duration) * total_len)
+        windows.append((start_byte, end_byte, start_sec, end_sec))
+        start_sec += chunk_seconds
+    return windows
+
+
 def chunk_audio_bytes(
     audio_bytes: bytes,
     mime_type: str,
     chunk_seconds: int = AUDIO_MAX_SECONDS,
 ) -> list[tuple[bytes, float, float]]:
-    """Chunk audio into windows with timestamps; MP3 uses proportional chunking fallback."""
+    """Chunk audio into windows with timestamps.
+
+    WAV is decoded and sliced exactly. MP3 timestamps are anchored to the real
+    container duration (via PyAV) with byte-proportional segmentation; if PyAV
+    cannot read the file we fall back to a rough size-based duration estimate.
+    """
     if mime_type == "audio/wav":
         try:
             with wave.open(io.BytesIO(audio_bytes)) as wf:
@@ -224,15 +267,14 @@ def chunk_audio_bytes(
                 return windows
         except Exception:
             return [(audio_bytes, 0.0, float(chunk_seconds))]
-    estimated_duration = len(audio_bytes) / 16_000
-    if estimated_duration <= chunk_seconds:
-        return [(audio_bytes, 0.0, estimated_duration)]
-    windows = []
-    start_sec = 0.0
-    while start_sec < estimated_duration:
-        end_sec = min(start_sec + chunk_seconds, estimated_duration)
-        start_byte = int((start_sec / estimated_duration) * len(audio_bytes))
-        end_byte = int((end_sec / estimated_duration) * len(audio_bytes))
-        windows.append((audio_bytes[start_byte:end_byte], start_sec, end_sec))
-        start_sec += chunk_seconds
-    return windows
+    duration = get_audio_duration_seconds(audio_bytes)
+    if duration is None:
+        duration = len(audio_bytes) / 16_000  # rough fallback when PyAV can't read it
+    if duration <= chunk_seconds:
+        return [(audio_bytes, 0.0, duration)]
+    return [
+        (audio_bytes[start_byte:end_byte], start_sec, end_sec)
+        for start_byte, end_byte, start_sec, end_sec in proportional_audio_windows(
+            len(audio_bytes), duration, chunk_seconds
+        )
+    ]

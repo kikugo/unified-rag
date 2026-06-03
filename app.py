@@ -842,14 +842,13 @@ with st.expander("ℹ️ About this app"):
 
     | Modality | Formats | Limit | Handling |
     |---|---|---|---|
-    | Images | PNG, JPG | 4096px (auto-resized) | Auto |
-    | PDFs | PDF | 6 pages per call | Auto-chunked |
-    | Audio | MP3, WAV | 80 seconds | Auto-trimmed |
-    | Video | MP4, MOV | 80 seconds | Rejected with warning |
+    | Images | PNG, JPG | 4096px (auto-resized) | Per-file or auto caption |
+    | PDFs | PDF | 4 pages per embed call | Overlap chunking + text for BM25 |
+    | Audio | MP3, WAV | 80s per chunk | Timestamped chunks |
+    | Video | MP4, MOV | Long files sampled | Adaptive frame intervals + timestamps |
 
-    **How it works:** Upload content → Gemini Embedding 2 vectorizes it → your question is
-    embedded and scored against all vectors via cosine similarity → top retrieved results are passed to
-    Gemini Flash for a grounded answer.
+    **How it works:** Upload → embed into Chroma (or Google File Search) → hybrid local search
+    (dense + BM25 + RRF, with optional query expansion) → top-K chunks and source IDs → Gemini Flash answer.
     """)
 
 # process uploads from sidebar

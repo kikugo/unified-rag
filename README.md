@@ -12,7 +12,7 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 ## How it works
 
 1. **Upload**: You drop files in. The app either embeds them locally into Chroma (using `gemini-embedding-2-preview`) or pushes them straight to an ephemeral Google File Search store. Local uploads go through hashed file storage under `.unified_rag_store/` instead of stuffing raw bytes into Chroma metadata when possible.
-2. **Search**: You ask a question. The backend can route to Google File Search, or run hybrid local retrieval: dense Chroma search fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF), plus lightweight query expansion on short questions.
+2. **Search**: You ask a question. The backend can route to Google File Search, or run hybrid local retrieval: dense Chroma search fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF).
 3. **Answer**: `gemini-2.5-flash` gets the top retrieved chunks (not just the first hit) with source IDs like `[S1]` and `[S2]` so citations actually mean something.
 
 ## Features that matter
@@ -46,7 +46,7 @@ There are tests under `tests/` if you want to sanity-check helpers (`python3 -m 
 
 ## Notes to self: Upcoming fixes
 
-My professor recently reviewed the codebase and pointed out some real embarrassments. Retrieval is in better shape now (Top-K context, BM25+RRF, basic query expansion), but there's still plenty that feels prototype-grade.
+My professor recently reviewed the codebase and pointed out some real embarrassments. Retrieval is in better shape now (Top-K context, BM25+RRF), but there's still plenty that feels prototype-grade.
 
 Here is the hit-list of upgrades I still need to work on:
 
@@ -55,7 +55,7 @@ Here is the hit-list of upgrades I still need to work on:
 - **Transcripts**: Audio and video ingest store transcript fields, but I'm not actually generating speech-to-text yet. That's probably the biggest win left for video search.
 - **MP3 chunking**: WAV chunks decode cleanly; MP3 still uses a byte-proportional fallback instead of PyAV.
 - **Semantic PDF chunking**: Overlap page windows are in place (4 pages with 1-page overlap). I might still try `semchunk` if overlap isn't enough.
-- **HyDE / multi-embed query expansion**: Short queries get simple variant phrases today. I still want to test drafting a fake answer or averaging multiple query embeddings like my professor suggested.
+- **HyDE / multi-embed query expansion**: Short queries get embedded as-is today. I ripped out the old variant-phrase hack since it was mostly noise; I still want to test drafting a fake answer or averaging multiple query embeddings like my professor suggested.
 - **Rehydration**: Chroma and the registry persist on disk, but the Streamlit session doesn't rebuild the sidebar source list from them after a restart.
 - **Caching & Async**: The upload loop currently blocks the main thread. I really ought to wrap it in a `ThreadPoolExecutor` so people don't have to wait. I also need to add LRU caching on the router, and drop an SHA-256 content hash check in so I stop re-embedding files if the Streamlit server reloads.
 - **Cross-Encoders**: I'm debating whether a lightweight `SentenceTransformer` re-ranker makes sense here. Most of my documents are visual, so a standard text-to-text cross encoder might just choke on them. I need to test if relying purely on Gemini Flash is enough.

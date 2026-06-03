@@ -17,7 +17,6 @@ from rag_core import (
     MANAGED_BACKEND,
     bm25_rank,
     build_local_answer_prompt,
-    expand_query_variants,
     pop_source_and_embedding,
     reciprocal_rank_fusion,
     select_context_results,
@@ -549,15 +548,13 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
         return []
 
     effective_query = query or ""
-    variants = expand_query_variants(effective_query)
-    expanded_query = " ".join([effective_query, *variants]).strip()
 
     if query_emb is None and query:
         dim = st.session_state.get("embedding_dim", 3072)
         try:
             result = client.models.embed_content(
                 model="gemini-embedding-2-preview",
-                contents=expanded_query or query,
+                contents=effective_query or query,
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_QUERY",
                     output_dimensionality=dim,
@@ -590,7 +587,7 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
         if meta
     ]
     dense_ids = results["ids"][0] if results and results.get("ids") and results["ids"] else []
-    sparse_ids = [doc_id for doc_id, _ in bm25_rank(expanded_query or query or "", sparse_docs)[:candidate_count]]
+    sparse_ids = [doc_id for doc_id, _ in bm25_rank(effective_query or query or "", sparse_docs)[:candidate_count]]
     fused_ids = reciprocal_rank_fusion([dense_ids, sparse_ids])[:top_k]
     fused_position = {doc_id: rank for rank, doc_id in enumerate(fused_ids)}
 
@@ -804,7 +801,7 @@ with st.expander("ℹ️ About this app"):
     | Video | MP4, MOV | Long files sampled | Adaptive frame intervals + timestamps |
 
     **How it works:** Upload → embed into Chroma (or Google File Search) → hybrid local search
-    (dense + BM25 + RRF, with optional query expansion) → top-K chunks and source IDs → Gemini Flash answer.
+    (dense + BM25 + RRF) → top-K chunks and source IDs → Gemini Flash answer.
     """)
 
 # process uploads from sidebar

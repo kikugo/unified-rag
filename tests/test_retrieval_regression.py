@@ -1,6 +1,6 @@
 import unittest
 
-from rag_core import bm25_rank, expand_query_variants, reciprocal_rank_fusion
+from rag_core import bm25_rank, reciprocal_rank_fusion
 
 
 class RetrievalRegressionTest(unittest.TestCase):
@@ -17,11 +17,6 @@ class RetrievalRegressionTest(unittest.TestCase):
         fused = reciprocal_rank_fusion([["x", "y", "z"], ["z", "x"]])
         self.assertEqual(fused[0], "x")
         self.assertIn("z", fused[:2])
-
-    def test_expand_query_variants_for_short_query(self):
-        variants = expand_query_variants("margin")
-        self.assertTrue(any("margin" in v for v in variants))
-        self.assertGreaterEqual(len(variants), 1)
 
     def test_timestamp_label_present_in_sparse_doc(self):
         doc = {

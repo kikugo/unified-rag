@@ -4,6 +4,7 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
+import pandas as pd
 import base64
 import uuid
 import tempfile
@@ -153,8 +154,6 @@ with st.sidebar:
     if not sources:
         st.caption("📭 No documents loaded yet.")
     else:
-        import pandas as pd
-
         type_options = ["All"] + sorted({s["type"] for s in sources})
         type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
 
@@ -404,23 +403,6 @@ def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
 
 
 # embedding helpers
-def embed_text(text: str) -> np.ndarray | None:
-    """Embed a text string using Gemini Embedding 2."""
-    dim = st.session_state.get("embedding_dim", 3072)
-    try:
-        result = client.models.embed_content(
-            model="gemini-embedding-2-preview",
-            contents=text,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality=dim,
-            ),
-        )
-        return np.array(result.embeddings[0].values)
-    except Exception as e:
-        st.error(f"Embedding error: {e}")
-        return None
-
 def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray | None:
     """Embed an image using Gemini Embedding 2."""
     image_bytes = resize_image_if_needed(image_bytes, mime_type)
@@ -460,7 +442,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
         return None
 
 def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
-    """Embed a single PDF chunk (max 6 pages) using Gemini Embedding 2."""
+    """Embed a single PDF chunk using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
@@ -476,9 +458,7 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         return []
 
 def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
-    """Embed an audio file using Gemini Embedding 2 (max 80 seconds).
-    Automatically trims to 80s if the file is longer.
-    """
+    """Embed an audio file using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = client.models.embed_content(
@@ -492,24 +472,6 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     except Exception as e:
         st.error(f"Audio embedding error: {e}")
         return None
-
-def embed_video(video_bytes: bytes, mime_type: str) -> np.ndarray | None:
-    """Embed a video using Gemini Embedding 2 (max 128 seconds)."""
-    dim = st.session_state.get("embedding_dim", 3072)
-    try:
-        result = client.models.embed_content(
-            model="gemini-embedding-2-preview",
-            contents=[
-                types.Part.from_bytes(data=video_bytes, mime_type=mime_type)
-            ],
-            config=types.EmbedContentConfig(output_dimensionality=dim),
-        )
-        return np.array(result.embeddings[0].values)
-    except Exception as e:
-        st.error(f"Video embedding error: {e}")
-        return None
-
-
 
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
                  preview_bytes: bytes | None = None, video_path: str | None = None,

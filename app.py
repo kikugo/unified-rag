@@ -40,7 +40,7 @@ from media_ingest import (
     parse_caption_map,
     resize_image_if_needed,
 )
-from storage import delete_blob, persist_blob, read_blob
+from storage import delete_blob, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
 from source_registry import delete_source, list_sources, upsert_source
 
 # page config
@@ -63,7 +63,7 @@ if "messages" not in st.session_state:
 if "tts_pending" not in st.session_state:
     st.session_state.tts_pending = None
 if "corpus_id" not in st.session_state:
-    st.session_state.corpus_id = str(uuid.uuid4())
+    st.session_state.corpus_id = load_or_create_corpus_id()
 if "pending_clear_all" not in st.session_state:
     st.session_state.pending_clear_all = False
 if "pending_delete_chroma_ids" not in st.session_state:
@@ -135,6 +135,7 @@ with st.sidebar:
             st.session_state.doc_embeddings = []
             st.session_state.doc_sources = []
             st.session_state.corpus_id = str(uuid.uuid4())
+            set_corpus_id(st.session_state.corpus_id)
             st.toast("Dimension changed — documents cleared. Re-upload to re-embed.", icon="⚠️")
         st.session_state.active_dim = st.session_state.embedding_dim
 
@@ -312,6 +313,7 @@ if st.session_state.pending_clear_all:
     st.session_state.doc_sources = []
     st.session_state.messages = []
     st.session_state.corpus_id = str(uuid.uuid4())
+    set_corpus_id(st.session_state.corpus_id)
     if st.session_state.google_store is not None and client is not None:
         try:
             client.file_search_stores.delete(name=st.session_state.google_store.name, config={'force': True})

@@ -9,10 +9,13 @@ class StorageTest(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.original_root = storage.STORAGE_ROOT
+        self.original_corpus_path = storage.CORPUS_ID_PATH
         storage.STORAGE_ROOT = Path(self.tmp_dir.name) / "blobstore"
+        storage.CORPUS_ID_PATH = storage.STORAGE_ROOT / "corpus_id"
 
     def tearDown(self):
         storage.STORAGE_ROOT = self.original_root
+        storage.CORPUS_ID_PATH = self.original_corpus_path
         self.tmp_dir.cleanup()
 
     def test_persist_blob_is_deterministic_and_readable(self):
@@ -32,6 +35,17 @@ class StorageTest(unittest.TestCase):
 
         self.assertFalse(Path(path).exists())
         self.assertEqual(storage.read_blob(path), b"")
+
+    def test_corpus_id_persists_across_calls(self):
+        first = storage.load_or_create_corpus_id()
+        second = storage.load_or_create_corpus_id()
+        self.assertTrue(first)
+        self.assertEqual(first, second)
+
+    def test_set_corpus_id_overwrites_persisted_value(self):
+        storage.load_or_create_corpus_id()
+        storage.set_corpus_id("fixed-corpus")
+        self.assertEqual(storage.load_or_create_corpus_id(), "fixed-corpus")
 
 
 if __name__ == "__main__":

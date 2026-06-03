@@ -2,10 +2,36 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import uuid
 from pathlib import Path
 
 
 STORAGE_ROOT = Path(".unified_rag_store")
+CORPUS_ID_PATH = STORAGE_ROOT / "corpus_id"
+
+
+def load_or_create_corpus_id() -> str:
+    """Return the persisted corpus id, creating and saving one on first use.
+
+    Persisting it (instead of minting a fresh uuid each session) keeps a single
+    stable corpus across restarts, so the index can be rehydrated and old rows
+    are not orphaned every time the app reloads.
+    """
+    try:
+        if CORPUS_ID_PATH.exists():
+            existing = CORPUS_ID_PATH.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+    except Exception:
+        pass
+    corpus_id = str(uuid.uuid4())
+    set_corpus_id(corpus_id)
+    return corpus_id
+
+
+def set_corpus_id(corpus_id: str):
+    STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+    CORPUS_ID_PATH.write_text(corpus_id, encoding="utf-8")
 
 
 def _safe_extension(mime_type: str, source_name: str | None = None) -> str:

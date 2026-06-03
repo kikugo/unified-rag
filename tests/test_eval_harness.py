@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eval_harness import evaluate_queries, load_gold_set, recall_at_k
+from eval_harness import (
+    evaluate_queries,
+    load_gold_set,
+    make_bm25_search_fn,
+    recall_at_k,
+)
+
+DATA_DIR = Path(__file__).parent / "data"
 
 
 class EvalHarnessTest(unittest.TestCase):
@@ -37,6 +44,23 @@ class EvalHarnessTest(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             loaded = load_gold_set(path)
             self.assertEqual(loaded[0]["expected_ids"], ["a"])
+
+    def test_seeded_gold_set_retrieves_every_expected_doc(self):
+        corpus = load_gold_set(DATA_DIR / "eval_corpus.json")
+        gold = load_gold_set(DATA_DIR / "eval_gold_set.json")
+
+        # Every gold doc id must exist in the seeded corpus, or the set is stale.
+        corpus_ids = {doc["id"] for doc in corpus}
+        for case in gold:
+            for expected in case["expected_ids"]:
+                self.assertIn(expected, corpus_ids, f"gold id {expected} missing from corpus")
+
+        report = evaluate_queries(gold, search_fn=make_bm25_search_fn(corpus), k_values=(3, 5))
+        # Regression gate: BM25 must surface every gold doc within the top 3.
+        self.assertEqual(report["summary"]["recall@3"], 1.0)
+        self.assertEqual(report["summary"]["recall@5"], 1.0)
+        for row in report["details"]:
+            self.assertEqual(row["recall@3"], 1.0, f"regressed on query: {row['query']}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+[
+  {"id": "doc-tesla", "searchable_text": "Tesla Q4 2024 delivery numbers and vehicle production ramp"},
+  {"id": "doc-revenue", "searchable_text": "quarterly revenue chart broken down by business segment"},
+  {"id": "doc-video-ts", "searchable_text": "earnings.mp4 frame timestamp 1:05 earnings beat raised guidance"},
+  {"id": "doc-netflix", "searchable_text": "Netflix Q4 2024 subscriber additions and membership growth chart"},
+  {"id": "doc-nike", "searchable_text": "Nike Q4 2024 footwear and apparel wholesale breakdown"},
+  {"id": "doc-google", "searchable_text": "Google Q4 2024 advertising revenue and cloud platform growth"},
+  {"id": "doc-margin", "searchable_text": "gross margin and operating margin trend lines through 2024"},
+  {"id": "doc-audio-intro", "searchable_text": "podcast.mp3 audio 0:00 1:20 host introduction and welcome segment"},
+  {"id": "doc-contract-term", "searchable_text": "contract.pdf pages 3-4 termination clause and required notice period"},
+  {"id": "doc-contract-pay", "searchable_text": "contract.pdf pages 1-2 payment schedule installments and fees"},
+  {"id": "doc-tencent", "searchable_text": "Tencent Q4 2024 gaming bookings and fintech services"},
+  {"id": "doc-accenture", "searchable_text": "Accenture Q4 2024 consulting bookings and managed services"}
+]

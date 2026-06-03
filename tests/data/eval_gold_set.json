@@ -1,14 +1,16 @@
 [
-  {
-    "query": "Tesla delivery",
-    "expected_ids": ["doc-tesla"]
-  },
-  {
-    "query": "revenue chart",
-    "expected_ids": ["doc-revenue"]
-  },
-  {
-    "query": "earnings 1:05",
-    "expected_ids": ["doc-video-ts"]
-  }
+  {"query": "Tesla delivery numbers", "expected_ids": ["doc-tesla"]},
+  {"query": "vehicle production ramp", "expected_ids": ["doc-tesla"]},
+  {"query": "revenue chart by segment", "expected_ids": ["doc-revenue"]},
+  {"query": "earnings 1:05", "expected_ids": ["doc-video-ts"]},
+  {"query": "Netflix subscriber growth", "expected_ids": ["doc-netflix"]},
+  {"query": "Nike footwear apparel", "expected_ids": ["doc-nike"]},
+  {"query": "Google cloud advertising", "expected_ids": ["doc-google"]},
+  {"query": "operating margin trend", "expected_ids": ["doc-margin"]},
+  {"query": "podcast host introduction", "expected_ids": ["doc-audio-intro"]},
+  {"query": "termination clause notice period", "expected_ids": ["doc-contract-term"]},
+  {"query": "payment schedule installments fees", "expected_ids": ["doc-contract-pay"]},
+  {"query": "Tencent gaming bookings", "expected_ids": ["doc-tencent"]},
+  {"query": "Accenture consulting bookings", "expected_ids": ["doc-accenture"]},
+  {"query": "gross margin 2024", "expected_ids": ["doc-margin"]}
 ]

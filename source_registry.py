@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +20,17 @@ def _load_registry() -> dict[str, Any]:
 
 
 def _save_registry(payload: dict[str, Any]):
+    """Write the registry atomically so a crash mid-write can't truncate it."""
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY_PATH.write_text(json.dumps(payload, indent=2))
+    fd, tmp_path = tempfile.mkstemp(dir=str(REGISTRY_PATH.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+        os.replace(tmp_path, REGISTRY_PATH)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def upsert_source(entry: dict[str, Any]):

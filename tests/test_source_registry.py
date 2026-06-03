@@ -28,6 +28,15 @@ class SourceRegistryTest(unittest.TestCase):
         source_registry.delete_source("s1")
         self.assertEqual(source_registry.list_sources("c1"), [])
 
+    def test_atomic_write_leaves_no_temp_files(self):
+        source_registry.upsert_source({"source_id": "s1", "name": "doc", "corpus_id": "c1"})
+        source_registry.upsert_source({"source_id": "s2", "name": "doc2", "corpus_id": "c1"})
+        leftover = list(Path(self.tmp_dir.name).glob("*.tmp"))
+        self.assertEqual(leftover, [])
+        self.assertTrue(source_registry.REGISTRY_PATH.exists())
+        # File is complete, valid JSON after the replace.
+        self.assertEqual(len(source_registry.list_sources("c1")), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,6 +64,40 @@ def pop_source_and_embedding(
     return removed, source_chroma_ids(removed)
 
 
+def build_rehydrated_sources(registry_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild the in-session sidebar source list from persisted registry rows.
+
+    Only local rows are restored (managed sources live in Google's store and are
+    not re-listed here). The registry stores `doc_id`; the sidebar expects `id`,
+    so the value is mapped across.
+    """
+    restored = []
+    for row in registry_rows:
+        if row.get("backend", LOCAL_BACKEND) != LOCAL_BACKEND:
+            continue
+        doc_id = row.get("doc_id") or (row.get("chroma_ids") or [None])[0]
+        if not doc_id:
+            continue
+        restored.append({
+            "source_id": row.get("source_id"),
+            "id": doc_id,
+            "name": row.get("name", "Unknown"),
+            "type": row.get("type", "unknown"),
+            "mime": row.get("mime", "application/octet-stream"),
+            "file_path": row.get("file_path"),
+            "preview_path": row.get("preview_path"),
+            "video_path": row.get("video_path"),
+            "backend": LOCAL_BACKEND,
+            "searchable_text": row.get("searchable_text", ""),
+            "chroma_ids": row.get("chroma_ids") or [doc_id],
+            "page_range": row.get("page_range"),
+            "caption": row.get("caption"),
+            "timestamp_start_sec": row.get("timestamp_start_sec"),
+            "timestamp_end_sec": row.get("timestamp_end_sec"),
+        })
+    return restored
+
+
 def select_context_results(results: list[dict[str, Any]], max_results: int = 5) -> list[dict[str, Any]]:
     selected = []
     for idx, result in enumerate(results[:max(0, max_results)], start=1):

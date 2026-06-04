@@ -17,6 +17,7 @@ from rag_core import (
     MANAGED_BACKEND,
     bm25_rank,
     build_local_answer_prompt,
+    build_rehydrated_sources,
     call_with_retry,
     pop_source_and_embedding,
     reciprocal_rank_fusion,
@@ -74,6 +75,15 @@ if "load_samples_requested" not in st.session_state:
     st.session_state.load_samples_requested = False
 if "selected_citation_source_id" not in st.session_state:
     st.session_state.selected_citation_source_id = None
+
+# Rebuild the sidebar source list from the persisted registry once per session,
+# so a restart or browser refresh doesn't drop everything that's still indexed.
+if "rehydrated" not in st.session_state:
+    st.session_state.rehydrated = True
+    if not st.session_state.doc_sources:
+        restored = build_rehydrated_sources(list_sources(st.session_state.corpus_id))
+        if restored:
+            st.session_state.doc_sources = restored
 
 client = None
 

@@ -3,6 +3,7 @@ import unittest
 from rag_core import (
     bm25_rank,
     build_local_answer_prompt,
+    build_rehydrated_sources,
     call_with_retry,
     is_rate_limit_error,
     reciprocal_rank_fusion,
@@ -99,6 +100,23 @@ class RagCoreTest(unittest.TestCase):
 
         self.assertEqual(fused[0], "shared")
         self.assertEqual(set(fused), {"dense-top", "shared", "dense-third", "sparse-second"})
+
+    def test_build_rehydrated_sources_restores_local_rows_and_maps_doc_id(self):
+        rows = [
+            {"source_id": "s1", "doc_id": "d1", "name": "chart.png", "type": "image",
+             "backend": "local", "chroma_ids": ["d1"]},
+            {"source_id": "s2", "name": "cloud.pdf", "type": "pdf", "backend": "managed"},
+            {"source_id": "s3", "name": "clip.mp4", "type": "video_frame", "backend": "local",
+             "chroma_ids": ["d3"]},
+        ]
+
+        restored = build_rehydrated_sources(rows)
+
+        self.assertEqual([r["source_id"] for r in restored], ["s1", "s3"])
+        self.assertEqual(restored[0]["id"], "d1")
+        # falls back to first chroma id when doc_id is absent
+        self.assertEqual(restored[1]["id"], "d3")
+        self.assertTrue(all(r["backend"] == "local" for r in restored))
 
     def test_is_rate_limit_error_matches_quota_and_429(self):
         self.assertTrue(is_rate_limit_error(Exception("429 RESOURCE_EXHAUSTED")))

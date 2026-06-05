@@ -42,6 +42,7 @@ from media_ingest import (
     get_video_duration_seconds,
     parse_caption_map,
     resize_image_if_needed,
+    select_scene_frames,
     transcript_for_timestamp,
 )
 from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
@@ -254,6 +255,12 @@ with st.sidebar:
         value=True,
         key="transcribe_audio",
         help="Use Gemini to transcribe each audio chunk so spoken words become searchable. Adds one API call per chunk.",
+    )
+    scene_sampling = st.checkbox(
+        "Scene-based video frames",
+        value=True,
+        key="scene_sampling",
+        help="Skip near-duplicate frames so a held slide indexes once instead of many times. Fewer embeddings, less redundancy.",
     )
     uploaded_files = st.file_uploader(
         "Files",
@@ -1011,6 +1018,8 @@ if uploaded_files:
             stored_video_path = persist_blob(file_bytes, mime, file.name)
             interval = choose_frame_interval(duration)
             frames = extract_video_frames(file_bytes, interval_sec=interval)
+            if scene_sampling:
+                frames = select_scene_frames(frames)
             transcript_windows = transcribe_video_audio(file_bytes) if transcribe_audio else []
             for frame_png, ts in frames:
                 emb = embed_image(frame_png, mime_type="image/png")

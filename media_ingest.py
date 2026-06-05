@@ -5,12 +5,14 @@ import os
 import tempfile
 import wave
 
+import numpy as np
 from PIL import Image
 
 AUDIO_MAX_SECONDS = 80
 VIDEO_MAX_SECONDS = 80
 FRAME_INTERVAL_SEC = 5
 IMAGE_MAX_DIM = 4096
+SCENE_CHANGE_THRESHOLD = 0.12
 
 
 def parse_caption_map(raw: str) -> dict[str, str]:
@@ -157,6 +159,40 @@ def extract_video_frames(
         return []
     finally:
         os.remove(tmp_path)
+
+
+def frame_signature(image_bytes: bytes, size: int = 32) -> np.ndarray:
+    """A small grayscale fingerprint of a frame for cheap visual comparison."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("L").resize((size, size))
+    return np.asarray(img, dtype="float32").flatten() / 255.0
+
+
+def is_scene_change(sig_a: np.ndarray, sig_b: np.ndarray, threshold: float = SCENE_CHANGE_THRESHOLD) -> bool:
+    """True when two frame signatures differ enough to count as a new scene."""
+    return float(np.mean(np.abs(sig_a - sig_b))) >= threshold
+
+
+def select_scene_frames(
+    frames: list[tuple[bytes, float]], threshold: float = SCENE_CHANGE_THRESHOLD
+) -> list[tuple[bytes, float]]:
+    """Keep one frame per visual scene, dropping near-duplicates.
+
+    A slide held across several sampling intervals collapses to a single frame,
+    so a presentation video indexes one frame per slide instead of many copies —
+    better recall of distinct content and fewer embedding calls.
+    """
+    kept = []
+    last_sig = None
+    for image_bytes, ts in frames:
+        try:
+            sig = frame_signature(image_bytes)
+        except Exception:
+            kept.append((image_bytes, ts))
+            continue
+        if last_sig is None or is_scene_change(last_sig, sig, threshold):
+            kept.append((image_bytes, ts))
+            last_sig = sig
+    return kept
 
 
 def transcript_for_timestamp(ts: float, windows: list[tuple[float, float, str]]) -> str:

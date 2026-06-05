@@ -416,7 +416,7 @@ def route_query(question: str) -> str:
     )
     try:
         resp = call_with_retry(lambda: client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
         ))
         answer = resp.text.strip().lower()
@@ -428,7 +428,7 @@ def route_query(question: str) -> str:
 def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
     try:
         resp = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 types.Part(text="Write a concise search caption for this image in one sentence."),

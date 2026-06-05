@@ -877,11 +877,11 @@ if uploaded_files:
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
                 audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
-                for chunk_idx, (chunk_bytes, start_sec, end_sec) in enumerate(audio_chunks, start=1):
-                    emb = embed_audio(chunk_bytes, mime_type=audio_mime)
+                for chunk_idx, (chunk_bytes, start_sec, end_sec, chunk_mime) in enumerate(audio_chunks, start=1):
+                    emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
                     if emb is not None:
                         label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
-                        transcript = transcribe_audio_bytes(chunk_bytes, audio_mime) if transcribe_audio else ""
+                        transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime) if transcribe_audio else ""
                         audio_meta = attach_transcript_metadata(
                             {
                                 "timestamp_start_sec": start_sec,
@@ -893,7 +893,7 @@ if uploaded_files:
                             emb,
                             label,
                             "audio",
-                            mime,
+                            chunk_mime,
                             chunk_bytes,
                             searchable_text=build_audio_searchable_text(
                                 file.name, start_sec, end_sec, audio_meta.get("transcript", "")

@@ -208,6 +208,71 @@ def get_audio_duration_seconds(audio_bytes: bytes, suffix: str = ".mp3") -> floa
         os.remove(tmp_path)
 
 
+def decode_audio_to_wav(audio_bytes: bytes, suffix: str = ".mp3", rate: int = 16000) -> bytes | None:
+    """Decode PyAV-readable audio to a mono 16-bit PCM WAV blob, or None on failure.
+
+    Lets MP3 (and other compressed formats) be chunked into valid, independently
+    embeddable WAV windows instead of raw byte slices that only the first chunk
+    can decode.
+    """
+    import av
+    from av.audio.resampler import AudioResampler
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+    try:
+        container = av.open(tmp_path)
+        stream = next((s for s in container.streams if s.type == "audio"), None)
+        if stream is None:
+            container.close()
+            return None
+        resampler = AudioResampler(format="s16", layout="mono", rate=rate)
+        pcm = bytearray()
+        for frame in container.decode(stream):
+            for resampled in resampler.resample(frame):
+                pcm.extend(resampled.to_ndarray().astype("int16").tobytes())
+        for resampled in resampler.resample(None):  # flush
+            pcm.extend(resampled.to_ndarray().astype("int16").tobytes())
+        container.close()
+        out = io.BytesIO()
+        with wave.open(out, "wb") as writer:
+            writer.setnchannels(1)
+            writer.setsampwidth(2)
+            writer.setframerate(rate)
+            writer.writeframes(bytes(pcm))
+        return out.getvalue()
+    except Exception:
+        return None
+    finally:
+        os.remove(tmp_path)
+
+
+def _chunk_wav_bytes(wav_bytes: bytes, chunk_seconds: float) -> list[tuple[bytes, float, float]]:
+    """Slice a WAV blob into (bytes, start_sec, end_sec) windows by frame position."""
+    with wave.open(io.BytesIO(wav_bytes)) as wf:
+        framerate = wf.getframerate()
+        total_frames = wf.getnframes()
+        params = wf.getparams()
+        duration = total_frames / framerate
+        if duration <= chunk_seconds:
+            return [(wav_bytes, 0.0, duration)]
+        windows = []
+        start_sec = 0.0
+        while start_sec < duration:
+            start_frame = int(start_sec * framerate)
+            end_frame = int(min(start_sec + chunk_seconds, duration) * framerate)
+            wf.setpos(start_frame)
+            frames = wf.readframes(end_frame - start_frame)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as out:
+                out.setparams(params)
+                out.writeframes(frames)
+            windows.append((buf.getvalue(), start_sec, min(start_sec + chunk_seconds, duration)))
+            start_sec += chunk_seconds
+        return windows
+
+
 def proportional_audio_windows(
     total_len: int, duration: float, chunk_seconds: float
 ) -> list[tuple[int, int, float, float]]:
@@ -233,47 +298,34 @@ def chunk_audio_bytes(
     audio_bytes: bytes,
     mime_type: str,
     chunk_seconds: int = AUDIO_MAX_SECONDS,
-) -> list[tuple[bytes, float, float]]:
-    """Chunk audio into windows with timestamps.
+) -> list[tuple[bytes, float, float, str]]:
+    """Chunk audio into windows, returning (bytes, start_sec, end_sec, mime).
 
-    WAV is decoded and sliced exactly. MP3 timestamps are anchored to the real
-    container duration (via PyAV) with byte-proportional segmentation; if PyAV
-    cannot read the file we fall back to a rough size-based duration estimate.
+    WAV is sliced exactly. MP3 is decoded to WAV first (PyAV) so every chunk is
+    a valid, independently embeddable clip with accurate timestamps. If decoding
+    fails, we fall back to byte-proportional slices anchored to the real duration,
+    keeping the original mime so playback still works.
     """
     if mime_type == "audio/wav":
         try:
-            with wave.open(io.BytesIO(audio_bytes)) as wf:
-                framerate = wf.getframerate()
-                total_frames = wf.getnframes()
-                params = wf.getparams()
-                duration = total_frames / framerate
-                if duration <= chunk_seconds:
-                    return [(audio_bytes, 0.0, duration)]
-                windows = []
-                start_sec = 0.0
-                while start_sec < duration:
-                    start_frame = int(start_sec * framerate)
-                    end_frame = int(min((start_sec + chunk_seconds), duration) * framerate)
-                    wf.setpos(start_frame)
-                    frames = wf.readframes(end_frame - start_frame)
-                    buf = io.BytesIO()
-                    with wave.open(buf, "wb") as out:
-                        out.setparams(params)
-                        out.writeframes(frames)
-                    windows.append(
-                        (buf.getvalue(), start_sec, min(start_sec + chunk_seconds, duration))
-                    )
-                    start_sec += chunk_seconds
-                return windows
+            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(audio_bytes, chunk_seconds)]
         except Exception:
-            return [(audio_bytes, 0.0, float(chunk_seconds))]
+            return [(audio_bytes, 0.0, float(chunk_seconds), "audio/wav")]
+
+    decoded = decode_audio_to_wav(audio_bytes, suffix=".mp3")
+    if decoded is not None:
+        try:
+            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(decoded, chunk_seconds)]
+        except Exception:
+            pass
+
     duration = get_audio_duration_seconds(audio_bytes)
     if duration is None:
         duration = len(audio_bytes) / 16_000  # rough fallback when PyAV can't read it
     if duration <= chunk_seconds:
-        return [(audio_bytes, 0.0, duration)]
+        return [(audio_bytes, 0.0, duration, mime_type)]
     return [
-        (audio_bytes[start_byte:end_byte], start_sec, end_sec)
+        (audio_bytes[start_byte:end_byte], start_sec, end_sec, mime_type)
         for start_byte, end_byte, start_sec, end_sec in proportional_audio_windows(
             len(audio_bytes), duration, chunk_seconds
         )

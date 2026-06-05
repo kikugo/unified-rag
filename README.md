@@ -20,14 +20,16 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 - **It takes basically anything**: PNGs, JPGs, MP3s, WAVs, MP4s, MOVs, and regular PDFs.
 - **Hybrid Routing**: You don't have to manually pick the backend. Gemini Flash runs a sub-second check to figure out if your query belongs in the local vector store or the managed Google backend.
 - **Hybrid local retrieval**: Dense vectors plus BM25/RRF so exact keywords and serial numbers are less likely to disappear.
-- **Multimodal embeddings**: Per-image captions (including an optional auto-caption path), image+text interleaved embeddings, PDF overlap chunking with extracted text for search, timestamped audio chunks, and adaptive video frame sampling for longer files.
-- **Source registry**: A JSON registry tracks file paths, page ranges, timestamps, captions, and Chroma IDs so deletion and citation panels have something consistent to read.
-- **Citation click-through**: Answers cite `[S1]`, `[S2]`, etc., and you can open a source detail panel with previews, audio, or the original video.
+- **Multimodal embeddings**: Per-image captions (including an optional auto-caption path), image+text interleaved embeddings, PDF overlap chunking with extracted text for search, timestamped audio chunks decoded from MP3, and scene-based video frame sampling that skips near-duplicate frames.
+- **Speech-to-text**: Audio files and the audio track inside videos get transcribed with Gemini (there's a sidebar toggle), and each video frame inherits the transcript of the window it falls in. Spoken words become searchable.
+- **One source per file**: Every uploaded file is one sidebar entry and one registry row that tracks all its chunks, so deleting it cleans up every chunk's blobs. Re-uploading the same bytes is skipped via a content hash.
+- **Source registry**: A JSON registry tracks file paths, page ranges, timestamps, captions, and Chroma IDs, written atomically and rebuilt into the sidebar on restart.
+- **Citation click-through**: Answers cite `[S1]`, `[S2]`, etc.; opening one shows the exact cited chunk's pages or frame and seeks audio/video to the matched timestamp.
 - **Image queries**: You can upload an image instead of typing a question. The app hits ChromaDB's HNSW index to find visually or semantically similar content.
 - **Browser TTS**: I threw in a quick Web Speech API integration so the app can read answers out loud.
 - **Adjustable MRL**: You can slide the embedding dimensions between 3072, 1536, and 768.
 
-Most of the non-UI logic lives in helper modules now (`rag_core.py`, `storage.py`, `source_registry.py`, `eval_harness.py`) so I can unit test retrieval and ingest without launching Streamlit.
+Most of the non-UI logic lives in helper modules now (`rag_core.py`, `media_ingest.py`, `storage.py`, `source_registry.py`, `eval_harness.py`, and `app/gemini.py`) so I can unit test retrieval and ingest without launching Streamlit.
 
 ## Running it locally
 
@@ -44,19 +46,14 @@ For heavy usage, you can connect it to a hosted Chroma Cloud instance by droppin
 
 There are tests under `tests/` if you want to sanity-check helpers (`python3 -m unittest discover -s tests`). PDF tests skip automatically when PyMuPDF isn't installed.
 
-## Notes to self: Upcoming fixes
+## Notes to self: what's left
 
-My professor recently reviewed the codebase and pointed out some real embarrassments. Retrieval is in better shape now (Top-K context, BM25+RRF), but there's still plenty that feels prototype-grade.
+My professor reviewed the codebase a while back and pointed out a pile of real embarrassments. Most of that list is gone now. Retrieval is hybrid BM25+RRF with top-K context. Audio and video get transcribed. MP3 decodes properly, re-uploads dedupe by content hash, each file is one source row, citations seek to the right spot, and the corpus survives a restart. There's even a recall@k test on a seeded corpus so I can tell when I break something.
 
-Here is the hit-list of upgrades I still need to work on:
+What I still want to get to:
 
-- **Citation UX**: Click-through exists, but I still want seek-to-timestamp for audio/video and tighter PDF page focus when you open a cited chunk.
-- **Measure retrieval properly**: I added a small `eval_harness.py` and starter gold set, but I need more real questions and recall@K runs against a seeded corpus before I trust changes.
-- **Transcripts**: Audio chunks and video audio tracks now get transcribed with Gemini (toggle in the sidebar), and the text feeds search. Each video frame inherits the transcript of the audio window it falls in. Next step is tightening that alignment and handling long files without a transcription call per chunk.
-- **MP3 chunking**: WAV chunks decode cleanly; MP3 still uses a byte-proportional fallback instead of PyAV.
-- **Semantic PDF chunking**: Overlap page windows are in place (4 pages with 1-page overlap). I might still try `semchunk` if overlap isn't enough.
-- **HyDE / multi-embed query expansion**: Short queries get embedded as-is today. I ripped out the old variant-phrase hack since it was mostly noise; I still want to test drafting a fake answer or averaging multiple query embeddings like my professor suggested.
-- **Rehydration**: Chroma and the registry persist on disk, but the Streamlit session doesn't rebuild the sidebar source list from them after a restart.
-- **Caching & Async**: The upload loop currently blocks the main thread. I really ought to wrap it in a `ThreadPoolExecutor` so people don't have to wait. I also need to add LRU caching on the router, and drop an SHA-256 content hash check in so I stop re-embedding files if the Streamlit server reloads.
-- **Cross-Encoders**: I'm debating whether a lightweight `SentenceTransformer` re-ranker makes sense here. Most of my documents are visual, so a standard text-to-text cross encoder might just choke on them. I need to test if relying purely on Gemini Flash is enough.
-- **The cutting edge stuff**: I've got a lot of SOTA papers to read. I'm wondering if I should rip out my page-level PDF parsing and replace it with **ColPali**, which treats pages as pure image patches and completely bypasses OCR errors (though the HuggingFace bloat scares me). My professor also mentioned looking into Late Interaction methods like ColBERT, hierarchical tree summarization like RAPTOR, and even expanding the simple LLM router into full-blown Agentic RAG. I don't know if I have the energy to build all of that yet, but I need to read up on them.
+- **Grow the eval set**: The harness runs a 14-query gold set as a regression guard, but I need more real multimodal questions before I trust bigger retrieval changes. Everything below should be justified by those numbers, not vibes.
+- **Transcription cost**: Speech-to-text is one Gemini call per chunk. Fine for short clips, rough for a long video. I want a batch path or a per-file cap before heavy use.
+- **Semantic PDF chunking**: Overlap page windows are in place (4 pages with 1-page overlap). I might try `semchunk` if the eval shows boundary errors.
+- **Cross-encoder reranking**: Most of my content is visual, so a text-to-text cross encoder would probably choke. If I ever want reranking, a Gemini-based reranker fits the data better and adds no dependency. Waiting on eval numbers either way.
+- **The cutting-edge stuff**: ColPali (treats pages as image patches, skips OCR), ColBERT-style late interaction, RAPTOR tree summarization, full agentic RAG. Interesting, each a real dependency and a real architecture change. Only worth it if this becomes a product or a research demo, not before.

@@ -65,6 +65,14 @@ class MediaAudioTest(unittest.TestCase):
         self.assertGreater(chunks[1][1], 0.0)
         self.assertLessEqual(chunks[0][2], 80.0)
 
+    def test_wav_overlap_produces_overlapping_windows(self):
+        audio = self._make_wav(10.0)
+        chunks = chunk_audio_bytes(audio, "audio/wav", chunk_seconds=4, overlap_sec=1)
+        self.assertGreaterEqual(len(chunks), 3)
+        # each window starts before the previous one ends — i.e. they overlap
+        for (_, _, end_prev, _), (_, start_next, _, _) in zip(chunks, chunks[1:]):
+            self.assertLess(start_next, end_prev)
+
     def test_format_timestamp(self):
         self.assertEqual(format_timestamp(75), "1:15")
 

@@ -263,8 +263,14 @@ def decode_audio_to_wav(audio_bytes: bytes, suffix: str = ".mp3", rate: int = 16
         os.remove(tmp_path)
 
 
-def _chunk_wav_bytes(wav_bytes: bytes, chunk_seconds: float) -> list[tuple[bytes, float, float]]:
-    """Slice a WAV blob into (bytes, start_sec, end_sec) windows by frame position."""
+def _chunk_wav_bytes(
+    wav_bytes: bytes, chunk_seconds: float, overlap_sec: float = 0.0
+) -> list[tuple[bytes, float, float]]:
+    """Slice a WAV blob into (bytes, start_sec, end_sec) windows by frame position.
+
+    `overlap_sec` carries a tail of the previous window into the next so a phrase
+    split across a boundary still lands whole in at least one chunk.
+    """
     with wave.open(io.BytesIO(wav_bytes)) as wf:
         framerate = wf.getframerate()
         total_frames = wf.getnframes()
@@ -272,19 +278,23 @@ def _chunk_wav_bytes(wav_bytes: bytes, chunk_seconds: float) -> list[tuple[bytes
         duration = total_frames / framerate
         if duration <= chunk_seconds:
             return [(wav_bytes, 0.0, duration)]
+        step = max(0.001, chunk_seconds - max(0.0, overlap_sec))
         windows = []
         start_sec = 0.0
         while start_sec < duration:
+            end_sec = min(start_sec + chunk_seconds, duration)
             start_frame = int(start_sec * framerate)
-            end_frame = int(min(start_sec + chunk_seconds, duration) * framerate)
+            end_frame = int(end_sec * framerate)
             wf.setpos(start_frame)
             frames = wf.readframes(end_frame - start_frame)
             buf = io.BytesIO()
             with wave.open(buf, "wb") as out:
                 out.setparams(params)
                 out.writeframes(frames)
-            windows.append((buf.getvalue(), start_sec, min(start_sec + chunk_seconds, duration)))
-            start_sec += chunk_seconds
+            windows.append((buf.getvalue(), start_sec, end_sec))
+            if end_sec >= duration:
+                break
+            start_sec += step
         return windows
 
 
@@ -313,24 +323,26 @@ def chunk_audio_bytes(
     audio_bytes: bytes,
     mime_type: str,
     chunk_seconds: int = AUDIO_MAX_SECONDS,
+    overlap_sec: float = 0.0,
 ) -> list[tuple[bytes, float, float, str]]:
     """Chunk audio into windows, returning (bytes, start_sec, end_sec, mime).
 
     WAV is sliced exactly. MP3 is decoded to WAV first (PyAV) so every chunk is
     a valid, independently embeddable clip with accurate timestamps. If decoding
     fails, we fall back to byte-proportional slices anchored to the real duration,
-    keeping the original mime so playback still works.
+    keeping the original mime so playback still works. `overlap_sec` overlaps
+    decoded windows so phrases split across a boundary still land whole somewhere.
     """
     if mime_type == "audio/wav":
         try:
-            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(audio_bytes, chunk_seconds)]
+            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(audio_bytes, chunk_seconds, overlap_sec)]
         except Exception:
             return [(audio_bytes, 0.0, float(chunk_seconds), "audio/wav")]
 
     decoded = decode_audio_to_wav(audio_bytes, suffix=".mp3")
     if decoded is not None:
         try:
-            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(decoded, chunk_seconds)]
+            return [(b, s, e, "audio/wav") for b, s, e in _chunk_wav_bytes(decoded, chunk_seconds, overlap_sec)]
         except Exception:
             pass
 

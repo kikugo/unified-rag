@@ -258,8 +258,13 @@ with st.sidebar:
         st.session_state.load_samples_requested = True
 
 # init client
+@st.cache_resource
+def get_gemini_client(api_key: str):
+    """Build the Gemini client once per key instead of on every Streamlit rerun."""
+    return genai.Client(api_key=api_key)
+
 if google_api_key:
-    client = genai.Client(api_key=google_api_key)
+    client = get_gemini_client(google_api_key)
     st.sidebar.success("Client ready!")
 else:
     st.info("Enter your Google API key in the sidebar to get started.")

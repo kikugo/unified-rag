@@ -136,7 +136,14 @@ with st.sidebar:
     )
     
     st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
-    
+
+    st.checkbox(
+        "Expand query (HyDE)",
+        value=False,
+        key="use_hyde",
+        help="Draft a hypothetical answer, embed it, and average with your question's embedding. Better recall on vague questions; adds a Gemini call per search.",
+    )
+
     with st.expander("Advanced Vector Storage (ChromaDB)", expanded=False):
         st.caption("Leave blank to use a local, embedded database.")
         st.text_input("Chroma Tenant", value="", key="chroma_tenant")
@@ -460,6 +467,39 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
         return ""
 
 
+def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
+    """HyDE: draft a hypothetical answer, embed it, and average with the query.
+
+    Retrieval then matches passages by meaning, not just shared keywords. Falls
+    back to the plain query embedding if the draft or its embedding fails.
+    """
+    try:
+        draft = call_with_retry(lambda: client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Write a short, factual passage that would answer this question:\n{query}",
+        ))
+        hypothetical = (draft.text or "").strip()
+    except Exception:
+        hypothetical = ""
+
+    vectors = []
+    for text in (query, hypothetical):
+        if not text:
+            continue
+        try:
+            result = call_with_retry(lambda t=text: client.models.embed_content(
+                model="gemini-embedding-2-preview",
+                contents=t,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
+            ))
+            vectors.append(np.array(result.embeddings[0].values))
+        except Exception:
+            continue
+    if not vectors:
+        return None
+    return np.mean(vectors, axis=0)
+
+
 def transcribe_video_audio(video_bytes: bytes) -> list[tuple[float, float, str]]:
     """Transcribe a video's audio track, chunked into timestamped windows.
 
@@ -647,19 +687,22 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
 
     if query_emb is None and query:
         dim = st.session_state.get("embedding_dim", 3072)
-        try:
-            result = call_with_retry(lambda: client.models.embed_content(
-                model="gemini-embedding-2-preview",
-                contents=effective_query or query,
-                config=types.EmbedContentConfig(
-                    task_type="RETRIEVAL_QUERY",
-                    output_dimensionality=dim,
-                ),
-            ))
-            query_emb = np.array(result.embeddings[0].values)
-        except Exception as e:
-            st.error(f"Query embedding error: {e}")
-            return []
+        if st.session_state.get("use_hyde"):
+            query_emb = hyde_query_embedding(query, dim)
+        if query_emb is None:
+            try:
+                result = call_with_retry(lambda: client.models.embed_content(
+                    model="gemini-embedding-2-preview",
+                    contents=effective_query or query,
+                    config=types.EmbedContentConfig(
+                        task_type="RETRIEVAL_QUERY",
+                        output_dimensionality=dim,
+                    ),
+                ))
+                query_emb = np.array(result.embeddings[0].values)
+            except Exception as e:
+                st.error(f"Query embedding error: {e}")
+                return []
     elif query_emb is None:
         return []
 

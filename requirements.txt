@@ -5,5 +5,9 @@ numpy>=1.24.0
 PyMuPDF>=1.23.0
 requests>=2.31.0
 chromadb>=0.4.24
+# Keep ChromaDB's OpenTelemetry deps recent; older otlp-proto ships pre-3.19
+# generated code that fails to import under newer protobuf runtimes.
+opentelemetry-proto>=1.42.0
+opentelemetry-exporter-otlp-proto-grpc>=1.42.0
 av>=11.0.0
 pandas>=2.0.0

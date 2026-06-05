@@ -242,6 +242,30 @@ def resize_image_if_needed(image_bytes: bytes, mime_type: str) -> bytes:
         return image_bytes
 
 
+def normalize_image(image_bytes: bytes, mime_type: str = "") -> tuple[bytes, str]:
+    """Re-encode an image to a canonical format and size, returning (bytes, mime).
+
+    Transparent images become PNG; everything else becomes JPEG. Oversized images
+    are downscaled to IMAGE_MAX_DIM and metadata (EXIF, etc.) is dropped on
+    re-encode. Falls back to the original bytes/mime on any failure.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+        w, h = img.size
+        if max(w, h) > IMAGE_MAX_DIM:
+            ratio = IMAGE_MAX_DIM / max(w, h)
+            img = img.resize((max(1, int(w * ratio)), max(1, int(h * ratio))), Image.LANCZOS)
+        buf = io.BytesIO()
+        if has_alpha:
+            img.convert("RGBA").save(buf, format="PNG")
+            return buf.getvalue(), "image/png"
+        img.convert("RGB").save(buf, format="JPEG", quality=90)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:
+        return image_bytes, mime_type
+
+
 def get_audio_duration_seconds(audio_bytes: bytes, suffix: str = ".mp3") -> float | None:
     import av
 

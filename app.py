@@ -40,6 +40,7 @@ from media_ingest import (
     extract_video_frames,
     format_timestamp,
     get_video_duration_seconds,
+    normalize_image,
     parse_caption_map,
     resize_image_if_needed,
     select_scene_frames,
@@ -1049,16 +1050,17 @@ if uploaded_files:
                         source_id=file_source_id,
                     )
         else:
+            norm_bytes, norm_mime = normalize_image(file_bytes, mime)
             cap = per_file_captions.get(file.name, image_caption)
             if not cap and auto_caption_images:
-                cap = auto_caption_image(file_bytes, mime)
+                cap = auto_caption_image(norm_bytes, norm_mime)
             if cap:
-                emb = embed_image_with_caption(file_bytes, caption=cap, mime_type=mime)
+                emb = embed_image_with_caption(norm_bytes, caption=cap, mime_type=norm_mime)
             else:
-                emb = embed_image(file_bytes, mime_type=mime)
+                emb = embed_image(norm_bytes, mime_type=norm_mime)
             if emb is not None:
                 label = f"{file.name} · {cap}" if cap else file.name
-                add_document(emb, label, "image", mime, file_bytes,
+                add_document(emb, label, "image", norm_mime, norm_bytes,
                              searchable_text=build_image_searchable_text(file.name, cap or ""),
                              source_meta={"caption": cap or ""},
                              content_hash=content_hash, source_id=file_source_id)

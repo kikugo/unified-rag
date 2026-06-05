@@ -34,12 +34,14 @@ from media_ingest import (
     choose_frame_interval,
     chunk_audio_bytes,
     chunk_pdf,
+    decode_audio_to_wav,
     extract_pdf_text,
     extract_video_frames,
     format_timestamp,
     get_video_duration_seconds,
     parse_caption_map,
     resize_image_if_needed,
+    transcript_for_timestamp,
 )
 from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
 from source_registry import delete_source, list_sources, upsert_source
@@ -447,6 +449,24 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
         return text
     except Exception:
         return ""
+
+
+def transcribe_video_audio(video_bytes: bytes) -> list[tuple[float, float, str]]:
+    """Transcribe a video's audio track, chunked into timestamped windows.
+
+    Returns [(start_sec, end_sec, transcript)] for windows that contain speech,
+    so each frame can inherit the transcript covering its timestamp. Empty when
+    the video has no audio track or nothing was transcribed.
+    """
+    wav = decode_audio_to_wav(video_bytes, suffix=".mp4")
+    if not wav:
+        return []
+    windows = []
+    for chunk_bytes, start_sec, end_sec, chunk_mime in chunk_audio_bytes(wav, "audio/wav"):
+        transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime)
+        if transcript:
+            windows.append((start_sec, end_sec, transcript))
+    return windows
 
 
 # embedding helpers
@@ -923,16 +943,18 @@ if uploaded_files:
             stored_video_path = persist_blob(file_bytes, mime, file.name)
             interval = choose_frame_interval(duration)
             frames = extract_video_frames(file_bytes, interval_sec=interval)
+            transcript_windows = transcribe_video_audio(file_bytes) if transcribe_audio else []
             for frame_png, ts in frames:
                 emb = embed_image(frame_png, mime_type="image/png")
                 if emb is not None:
                     ts_label = format_timestamp(ts)
+                    frame_transcript = transcript_for_timestamp(ts, transcript_windows)
                     video_meta = attach_transcript_metadata(
                         {
                             "timestamp_start_sec": ts,
                             "timestamp_end_sec": ts + interval,
                         },
-                        transcript="",
+                        transcript=frame_transcript,
                     )
                     add_document(
                         emb,

@@ -159,6 +159,21 @@ def extract_video_frames(
         os.remove(tmp_path)
 
 
+def transcript_for_timestamp(ts: float, windows: list[tuple[float, float, str]]) -> str:
+    """Return the transcript of the window covering `ts`.
+
+    `windows` is [(start_sec, end_sec, transcript)]. A frame at `ts` inherits the
+    transcript of the audio window it falls in; a frame past the last window keeps
+    the last window's transcript so trailing frames stay searchable.
+    """
+    for start, end, transcript in windows:
+        if start <= ts < end:
+            return transcript
+    if windows and ts >= windows[-1][1]:
+        return windows[-1][2]
+    return ""
+
+
 def build_video_frame_searchable_text(filename: str, timestamp_label: str, transcript: str = "") -> str:
     base = f"{filename} frame timestamp {timestamp_label}"
     if transcript:

@@ -52,7 +52,7 @@ Here is the hit-list of upgrades I still need to work on:
 
 - **Citation UX**: Click-through exists, but I still want seek-to-timestamp for audio/video and tighter PDF page focus when you open a cited chunk.
 - **Measure retrieval properly**: I added a small `eval_harness.py` and starter gold set, but I need more real questions and recall@K runs against a seeded corpus before I trust changes.
-- **Transcripts**: Audio and video ingest store transcript fields, but I'm not actually generating speech-to-text yet. That's probably the biggest win left for video search.
+- **Transcripts**: Audio chunks and video audio tracks now get transcribed with Gemini (toggle in the sidebar), and the text feeds search. Each video frame inherits the transcript of the audio window it falls in. Next step is tightening that alignment and handling long files without a transcription call per chunk.
 - **MP3 chunking**: WAV chunks decode cleanly; MP3 still uses a byte-proportional fallback instead of PyAV.
 - **Semantic PDF chunking**: Overlap page windows are in place (4 pages with 1-page overlap). I might still try `semchunk` if overlap isn't enough.
 - **HyDE / multi-embed query expansion**: Short queries get embedded as-is today. I ripped out the old variant-phrase hack since it was mostly noise; I still want to test drafting a fake answer or averaging multiple query embeddings like my professor suggested.

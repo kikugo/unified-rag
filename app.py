@@ -677,10 +677,10 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
         return []
     
     corpus_metas = corpus_docs.get("metadatas") or []
+    corpus_meta_by_id = {doc_id: meta for doc_id, meta in zip(corpus_docs["ids"], corpus_metas) if meta}
     sparse_docs = [
         {"id": doc_id, "searchable_text": meta.get("searchable_text", meta.get("name", ""))}
-        for doc_id, meta in zip(corpus_docs["ids"], corpus_metas)
-        if meta
+        for doc_id, meta in corpus_meta_by_id.items()
     ]
     dense_ids = results["ids"][0] if results and results.get("ids") and results["ids"] else []
     sparse_ids = [doc_id for doc_id, _ in bm25_rank(effective_query or query or "", sparse_docs)[:candidate_count]]
@@ -696,14 +696,12 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
                 results["distances"][0][i] if "distances" in results and results["distances"] else 0.0,
             ))
 
+    # Reuse the corpus metadata already fetched above instead of a second Chroma call.
     missing_ids = [doc_id for doc_id in fused_ids if doc_id not in dense_ids]
-    if missing_ids:
-        try:
-            sparse_only = chroma_collection.get(ids=missing_ids)
-            for doc_id, meta in zip(sparse_only.get("ids", []), sparse_only.get("metadatas", [])):
-                result_rows.append((doc_id, meta, 1.0))
-        except Exception as e:
-            st.warning(f"Could not load keyword-only matches: {e}")
+    for doc_id in missing_ids:
+        meta = corpus_meta_by_id.get(doc_id)
+        if meta:
+            result_rows.append((doc_id, meta, 1.0))
 
     result_rows.sort(key=lambda row: fused_position.get(row[0], len(fused_position)))
 

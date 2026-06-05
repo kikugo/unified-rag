@@ -76,8 +76,9 @@ if "pending_cleanup_paths" not in st.session_state:
     st.session_state.pending_cleanup_paths = []
 if "load_samples_requested" not in st.session_state:
     st.session_state.load_samples_requested = False
-if "selected_citation_source_id" not in st.session_state:
-    st.session_state.selected_citation_source_id = None
+if "selected_citation" not in st.session_state:
+    # the exact cited chunk: {source_id, chroma_id, label, page_range, timestamp_start_sec}
+    st.session_state.selected_citation = None
 
 # Rebuild the sidebar source list from the persisted registry once per session,
 # so a restart or browser refresh doesn't drop everything that's still indexed.
@@ -729,6 +730,7 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
             "score": 1.0 - dist,  # Chroma returns cosine distance; metric is 1 - similarity
             "searchable_text": meta.get("searchable_text", ""),
             "timestamp_start_sec": meta.get("timestamp_start_sec"),
+            "page_range": meta.get("page_range"),
         })
     # Already ordered by RRF fusion above; a second sort here only penalized
     # keyword-only hits (whose dense score is 0), so we trust the fused order.
@@ -1062,35 +1064,37 @@ def render_results_gallery(results, show_score=False):
 
 
 def render_source_detail_panel():
-    source_id = st.session_state.get("selected_citation_source_id")
-    if not source_id:
+    citation = st.session_state.get("selected_citation")
+    if not citation:
         return
     all_sources = list_sources(st.session_state.corpus_id)
-    source = next((s for s in all_sources if s.get("source_id") == source_id), None)
+    source = next((s for s in all_sources if s.get("source_id") == citation.get("source_id")), None)
     if not source:
         return
+    # Focus on the exact cited chunk (its page render / frame), not the file's first chunk.
+    chunk = next(
+        (a for a in source_artifacts(source) if a.get("chroma_id") == citation.get("chroma_id")),
+        None,
+    ) or {}
+    seek = _seek_seconds(citation.get("timestamp_start_sec"))
     with st.expander("Selected Source Detail", expanded=True):
-        st.caption(f"Source ID: {source.get('source_id')}")
+        st.caption(f"Source: {citation.get('label') or source.get('name')}")
         st.caption(f"Type: {source.get('type')}")
-        if source.get("page_range"):
-            st.caption(f"Page range: {source.get('page_range')}")
-        if source.get("timestamp_start_sec") is not None:
-            start = format_timestamp(float(source.get("timestamp_start_sec", 0)))
-            end = format_timestamp(float(source.get("timestamp_end_sec", source.get("timestamp_start_sec", 0))))
-            st.caption(f"Timestamp: {start}-{end}")
+        if citation.get("page_range"):
+            st.caption(f"Showing {citation.get('page_range')}")
+        if citation.get("timestamp_start_sec") is not None:
+            st.caption(f"Timestamp: {format_timestamp(float(citation.get('timestamp_start_sec') or 0))}")
         if source.get("caption"):
             st.caption(f"Caption: {source.get('caption')}")
-        preview = read_blob(source.get("preview_path"))
-        payload = read_blob(source.get("file_path"))
-        video = read_blob(source.get("video_path"))
-        if source.get("type") == "pdf" and preview:
-            st.image(preview, width="stretch")
-        elif source.get("type") in ("image", "video_frame") and preview:
+        preview = read_blob(chunk.get("preview_path") or source.get("preview_path"))
+        payload = read_blob(chunk.get("file_path") or source.get("file_path"))
+        video = read_blob(chunk.get("video_path") or source.get("video_path"))
+        if source.get("type") in ("pdf", "image", "video_frame") and preview:
             st.image(preview, width="stretch")
         elif source.get("type") == "audio" and payload:
-            st.audio(payload, format=source.get("mime"), start_time=_seek_seconds(source.get("timestamp_start_sec")))
+            st.audio(payload, format=source.get("mime"), start_time=seek)
         if video:
-            st.video(video, start_time=_seek_seconds(source.get("timestamp_start_sec")))
+            st.video(video, start_time=seek)
 
 st.markdown("---")
 st.subheader("💬 Chat with your Documents")
@@ -1166,8 +1170,14 @@ else:
                     st.caption(f"Based on: {', '.join(source_labels)}")
                     for src in selected_results:
                         source_id = src.get("source_id")
-                        if source_id and st.button(f"Open {src['citation_id']}", key=f"open_src_{source_id}"):
-                            st.session_state.selected_citation_source_id = source_id
+                        if source_id and st.button(f"Open {src['citation_id']}", key=f"open_{src['citation_id']}"):
+                            st.session_state.selected_citation = {
+                                "source_id": source_id,
+                                "chroma_id": src.get("id"),
+                                "label": src.get("name"),
+                                "page_range": src.get("page_range"),
+                                "timestamp_start_sec": src.get("timestamp_start_sec"),
+                            }
                             st.rerun()
                     if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
                         st.session_state.tts_pending = full_text

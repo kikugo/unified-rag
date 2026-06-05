@@ -41,7 +41,7 @@ from media_ingest import (
     parse_caption_map,
     resize_image_if_needed,
 )
-from storage import delete_blob, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
+from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
 from source_registry import delete_source, list_sources, upsert_source
 
 # page config
@@ -345,7 +345,7 @@ def get_or_create_google_store():
             st.error(f"Failed to create Google File Search Store: {e}")
     return st.session_state.google_store
 
-def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str):
+def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str, content_hash: str = ""):
     """Save bytes to a temp file, upload directly to the managed Google File Search store."""
     store = get_or_create_google_store()
     if not store:
@@ -371,6 +371,7 @@ def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str):
             "type": doc_type,
             "mime": mime,
             "backend": MANAGED_BACKEND,
+            "content_hash": content_hash,
         })
     except Exception as e:
         st.error(f"Google Upload Error for {file_name}: {e}")
@@ -521,7 +522,8 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
 
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
                  preview_bytes: bytes | None = None, video_path: str | None = None,
-                 searchable_text: str = "", source_meta: dict | None = None):
+                 searchable_text: str = "", source_meta: dict | None = None,
+                 content_hash: str = ""):
     """Helper to add an embedding to ChromaDB and session state."""
     doc_id = str(uuid.uuid4())
     try:
@@ -533,6 +535,7 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "file_path": file_path,
             "corpus_id": st.session_state.corpus_id,
             "searchable_text": searchable_text or name,
+            "content_hash": content_hash,
         }
         if preview_bytes:
             metadata["preview_path"] = persist_blob(preview_bytes, "image/png", f"{name}_preview.png")
@@ -559,6 +562,7 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "video_path": metadata.get("video_path"),
             "backend": "local",
             "searchable_text": searchable_text or name,
+            "content_hash": content_hash,
         }
         if source_meta:
             source_row.update(source_meta)
@@ -580,6 +584,7 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "page_range": (source_meta or {}).get("page_range"),
             "caption": (source_meta or {}).get("caption"),
             "transcript": (source_meta or {}).get("transcript", ""),
+            "content_hash": content_hash,
             "chroma_ids": [doc_id],
         })
     except Exception as e:
@@ -855,103 +860,119 @@ with st.expander("ℹ️ About this app"):
 # process uploads from sidebar
 if uploaded_files:
     per_file_captions = parse_caption_map(image_captions_map_raw)
-    loaded_base_names = {s["name"].split(" · ")[0] for s in st.session_state.doc_sources}
-    new_files = [f for f in uploaded_files if f.name not in loaded_base_names]
+    # Dedup by content hash so re-uploads (and server reloads) don't re-embed the
+    # same bytes, even if the filename changed.
+    existing_hashes = {s.get("content_hash") for s in st.session_state.doc_sources if s.get("content_hash")}
 
-    if new_files:
-        progress = st.sidebar.progress(0, text="Embedding…")
-        for i, file in enumerate(new_files):
-            file_bytes = file.read()
-            mime = file.type
+    progress = st.sidebar.progress(0, text="Embedding…")
+    added = 0
+    skipped = 0
+    total = len(uploaded_files)
+    for i, file in enumerate(uploaded_files):
+        file_bytes = file.read()
+        mime = file.type
+        content_hash = hash_bytes(file_bytes)
+        if content_hash in existing_hashes:
+            skipped += 1
+            progress.progress((i + 1) / total, text=f"Skipped {file.name} (already indexed)")
+            continue
+        existing_hashes.add(content_hash)
 
-            if retrieval_strategy == "Managed RAG (Google File Search)":
-                add_file_to_google_store(file.name, file_bytes, mime)
-            elif mime == "application/pdf":
-                for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
-                    chunk_text = extract_pdf_text(chunk_bytes)
-                    for emb in embed_pdf(chunk_bytes):
-                        add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
-                                     preview_bytes=preview_png,
-                                     searchable_text=f"{file.name} {page_label}\n{chunk_text}",
-                                     source_meta={"page_range": page_label})
-            elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
-                audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
-                audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
-                for chunk_idx, (chunk_bytes, start_sec, end_sec, chunk_mime) in enumerate(audio_chunks, start=1):
-                    emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
-                    if emb is not None:
-                        label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
-                        transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime) if transcribe_audio else ""
-                        audio_meta = attach_transcript_metadata(
-                            {
-                                "timestamp_start_sec": start_sec,
-                                "timestamp_end_sec": end_sec,
-                            },
-                            transcript=transcript,
-                        )
-                        add_document(
-                            emb,
-                            label,
-                            "audio",
-                            chunk_mime,
-                            chunk_bytes,
-                            searchable_text=build_audio_searchable_text(
-                                file.name, start_sec, end_sec, audio_meta.get("transcript", "")
-                            ),
-                            source_meta=audio_meta,
-                        )
-            elif mime in ("video/mp4", "video/quicktime"):
-                duration = get_video_duration_seconds(file_bytes)
-                if duration is not None and duration > VIDEO_MAX_SECONDS:
-                    st.sidebar.info(f"⏱️ {file.name} is long; using adaptive frame sampling.")
-                stored_video_path = persist_blob(file_bytes, mime, file.name)
-                interval = choose_frame_interval(duration)
-                frames = extract_video_frames(file_bytes, interval_sec=interval)
-                for frame_png, ts in frames:
-                    emb = embed_image(frame_png, mime_type="image/png")
-                    if emb is not None:
-                        ts_label = format_timestamp(ts)
-                        video_meta = attach_transcript_metadata(
-                            {
-                                "timestamp_start_sec": ts,
-                                "timestamp_end_sec": ts + interval,
-                            },
-                            transcript="",
-                        )
-                        add_document(
-                            emb,
-                            f"{file.name} · {ts_label}",
-                            "video_frame",
-                            "image/png",
-                            file_bytes=frame_png,
-                            preview_bytes=frame_png,
-                            video_path=stored_video_path,
-                            searchable_text=build_video_frame_searchable_text(
-                                file.name, ts_label, video_meta.get("transcript", "")
-                            ),
-                            source_meta=video_meta,
-                        )
-
-            else:
-                cap = per_file_captions.get(file.name, image_caption)
-                if not cap and auto_caption_images:
-                    cap = auto_caption_image(file_bytes, mime)
-                if cap:
-                    emb = embed_image_with_caption(file_bytes, caption=cap, mime_type=mime)
-                else:
-                    emb = embed_image(file_bytes, mime_type=mime)
+        if retrieval_strategy == "Managed RAG (Google File Search)":
+            add_file_to_google_store(file.name, file_bytes, mime, content_hash=content_hash)
+        elif mime == "application/pdf":
+            for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
+                chunk_text = extract_pdf_text(chunk_bytes)
+                for emb in embed_pdf(chunk_bytes):
+                    add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
+                                 preview_bytes=preview_png,
+                                 searchable_text=f"{file.name} {page_label}\n{chunk_text}",
+                                 source_meta={"page_range": page_label},
+                                 content_hash=content_hash)
+        elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
+            audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
+            audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
+            for chunk_idx, (chunk_bytes, start_sec, end_sec, chunk_mime) in enumerate(audio_chunks, start=1):
+                emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
                 if emb is not None:
-                    label = f"{file.name} · {cap}" if cap else file.name
-                    add_document(emb, label, "image", mime, file_bytes,
-                                 searchable_text=build_image_searchable_text(file.name, cap or ""),
-                                 source_meta={"caption": cap or ""})
+                    label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
+                    transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime) if transcribe_audio else ""
+                    audio_meta = attach_transcript_metadata(
+                        {
+                            "timestamp_start_sec": start_sec,
+                            "timestamp_end_sec": end_sec,
+                        },
+                        transcript=transcript,
+                    )
+                    add_document(
+                        emb,
+                        label,
+                        "audio",
+                        chunk_mime,
+                        chunk_bytes,
+                        searchable_text=build_audio_searchable_text(
+                            file.name, start_sec, end_sec, audio_meta.get("transcript", "")
+                        ),
+                        source_meta=audio_meta,
+                        content_hash=content_hash,
+                    )
+        elif mime in ("video/mp4", "video/quicktime"):
+            duration = get_video_duration_seconds(file_bytes)
+            if duration is not None and duration > VIDEO_MAX_SECONDS:
+                st.sidebar.info(f"⏱️ {file.name} is long; using adaptive frame sampling.")
+            stored_video_path = persist_blob(file_bytes, mime, file.name)
+            interval = choose_frame_interval(duration)
+            frames = extract_video_frames(file_bytes, interval_sec=interval)
+            for frame_png, ts in frames:
+                emb = embed_image(frame_png, mime_type="image/png")
+                if emb is not None:
+                    ts_label = format_timestamp(ts)
+                    video_meta = attach_transcript_metadata(
+                        {
+                            "timestamp_start_sec": ts,
+                            "timestamp_end_sec": ts + interval,
+                        },
+                        transcript="",
+                    )
+                    add_document(
+                        emb,
+                        f"{file.name} · {ts_label}",
+                        "video_frame",
+                        "image/png",
+                        file_bytes=frame_png,
+                        preview_bytes=frame_png,
+                        video_path=stored_video_path,
+                        searchable_text=build_video_frame_searchable_text(
+                            file.name, ts_label, video_meta.get("transcript", "")
+                        ),
+                        source_meta=video_meta,
+                        content_hash=content_hash,
+                    )
+        else:
+            cap = per_file_captions.get(file.name, image_caption)
+            if not cap and auto_caption_images:
+                cap = auto_caption_image(file_bytes, mime)
+            if cap:
+                emb = embed_image_with_caption(file_bytes, caption=cap, mime_type=mime)
+            else:
+                emb = embed_image(file_bytes, mime_type=mime)
+            if emb is not None:
+                label = f"{file.name} · {cap}" if cap else file.name
+                add_document(emb, label, "image", mime, file_bytes,
+                             searchable_text=build_image_searchable_text(file.name, cap or ""),
+                             source_meta={"caption": cap or ""},
+                             content_hash=content_hash)
 
-            progress.progress((i + 1) / len(new_files), text=f"Processed {file.name}")
+        added += 1
+        progress.progress((i + 1) / total, text=f"Processed {file.name}")
 
-        progress.empty()
-        st.sidebar.success(f"Added {len(new_files)} file(s).")
-    else:
-        st.sidebar.info("All files already loaded.")
+    progress.empty()
+    if added:
+        st.sidebar.success(f"Added {added} file(s).")
+    if skipped:
+        st.sidebar.info(f"Skipped {skipped} already-indexed file(s).")
+    if not added and not skipped:
+        st.sidebar.info("No new files to add.")
 
 def _seek_seconds(value) -> int:
     """Coerce a stored timestamp into an int start_time for st.audio/st.video."""

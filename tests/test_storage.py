@@ -36,6 +36,13 @@ class StorageTest(unittest.TestCase):
         self.assertFalse(Path(path).exists())
         self.assertEqual(storage.read_blob(path), b"")
 
+    def test_hash_bytes_is_stable_and_content_addressed(self):
+        self.assertEqual(storage.hash_bytes(b"abc"), storage.hash_bytes(b"abc"))
+        self.assertNotEqual(storage.hash_bytes(b"abc"), storage.hash_bytes(b"abd"))
+        # matches the digest embedded in the persisted blob path
+        path = storage.persist_blob(b"abc", "text/plain", "f.txt")
+        self.assertIn(storage.hash_bytes(b"abc"), path)
+
     def test_corpus_id_persists_across_calls(self):
         first = storage.load_or_create_corpus_id()
         second = storage.load_or_create_corpus_id()

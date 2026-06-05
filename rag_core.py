@@ -89,6 +89,7 @@ def build_rehydrated_sources(registry_rows: list[dict[str, Any]]) -> list[dict[s
             "video_path": row.get("video_path"),
             "backend": LOCAL_BACKEND,
             "searchable_text": row.get("searchable_text", ""),
+            "content_hash": row.get("content_hash", ""),
             "chroma_ids": row.get("chroma_ids") or [doc_id],
             "page_range": row.get("page_range"),
             "caption": row.get("caption"),

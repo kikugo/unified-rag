@@ -45,9 +45,14 @@ def _safe_extension(mime_type: str, source_name: str | None = None) -> str:
     return ".bin"
 
 
+def hash_bytes(data: bytes) -> str:
+    """SHA-256 hex digest of a blob — the dedup key for uploaded files."""
+    return hashlib.sha256(data).hexdigest()
+
+
 def persist_blob(data: bytes, mime_type: str, source_name: str | None = None) -> str:
     """Store blob content under a deterministic hash path and return that path."""
-    digest = hashlib.sha256(data).hexdigest()
+    digest = hash_bytes(data)
     ext = _safe_extension(mime_type, source_name)
     blob_dir = STORAGE_ROOT / digest[:2]
     blob_dir.mkdir(parents=True, exist_ok=True)

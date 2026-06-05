@@ -19,9 +19,10 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
-    pop_source_and_embedding,
+    pop_source_by_id,
     reciprocal_rank_fusion,
     select_context_results,
+    source_artifacts,
 )
 from media_ingest import (
     AUDIO_MAX_SECONDS,
@@ -170,10 +171,10 @@ with st.sidebar:
         type_options = ["All"] + sorted({s["type"] for s in sources})
         type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
 
-        # Build dataframe; "#" tracks original index for safe deletion
+        # Build dataframe; "source_id" tracks the row for safe deletion
         df = pd.DataFrame([
-            {"#": i, "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
-            for i, s in enumerate(sources)
+            {"source_id": s["source_id"], "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
+            for s in sources
             if type_filter == "All" or s["type"] == type_filter
         ])
 
@@ -186,22 +187,24 @@ with st.sidebar:
             key="doc_table",
         )
 
-        selected_orig_idx = (
-            int(df.iloc[event.selection.rows[0]]["#"]) if event.selection.rows else None
+        selected_source_id = (
+            df.iloc[event.selection.rows[0]]["source_id"] if event.selection.rows else None
         )
 
         # Delete selected row
         col_del, col_count = st.columns([1, 2])
         with col_del:
-            if st.button("🗑 Delete", key="delete_row_btn", disabled=selected_orig_idx is None):
-                removed, chroma_ids = pop_source_and_embedding(
+            if st.button("🗑 Delete", key="delete_row_btn", disabled=selected_source_id is None):
+                removed, chroma_ids = pop_source_by_id(
                     st.session_state.doc_sources,
-                    st.session_state.doc_embeddings,
-                    selected_orig_idx,
+                    selected_source_id,
                 )
-                for path_key in ("file_path", "preview_path", "video_path"):
-                    if removed.get(path_key):
-                        st.session_state.pending_cleanup_paths.append(removed[path_key])
+                for artifact in source_artifacts(removed):
+                    for path_key in ("file_path", "preview_path", "video_path"):
+                        if artifact.get(path_key):
+                            st.session_state.pending_cleanup_paths.append(artifact[path_key])
+                if removed.get("source_id"):
+                    delete_source(removed["source_id"])
                 st.session_state.pending_delete_chroma_ids.extend(chroma_ids)
                 st.rerun()
         with col_count:
@@ -543,11 +546,18 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
                  preview_bytes: bytes | None = None, video_path: str | None = None,
                  searchable_text: str = "", source_meta: dict | None = None,
-                 content_hash: str = ""):
-    """Helper to add an embedding to ChromaDB and session state."""
+                 content_hash: str = "", source_id: str | None = None):
+    """Add one chunk to ChromaDB and fold it into its file's source row.
+
+    All chunks of an uploaded file share `source_id`, so the sidebar and registry
+    show one entry per file whose `chroma_ids`/`artifacts` cover every chunk.
+    """
     doc_id = str(uuid.uuid4())
     try:
         file_path = persist_blob(file_bytes, mime, name)
+        preview_path = persist_blob(preview_bytes, "image/png", f"{name}_preview.png") if preview_bytes else None
+        sid = source_id or (source_meta or {}).get("source_id") or str(uuid.uuid4())
+
         metadata: dict = {
             "name": name,
             "type": doc_type,
@@ -557,46 +567,53 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "searchable_text": searchable_text or name,
             "content_hash": content_hash,
         }
-        if preview_bytes:
-            metadata["preview_path"] = persist_blob(preview_bytes, "image/png", f"{name}_preview.png")
+        if preview_path:
+            metadata["preview_path"] = preview_path
         if video_path:
             metadata["video_path"] = video_path
         if source_meta:
             metadata.update(source_meta)
-        chroma_collection.upsert(
-            ids=[doc_id],
-            embeddings=[emb.tolist()],
-            metadatas=[metadata]
-        )
-        source_id = metadata.get("source_id") or str(uuid.uuid4())
-        metadata["source_id"] = source_id
-        st.session_state.doc_embeddings.append(emb)
-        source_row = {
-            "source_id": source_id,
-            "id": doc_id,
-            "name": name,
-            "type": doc_type,
-            "mime": mime,
-            "file_path": metadata["file_path"],
-            "preview_path": metadata.get("preview_path"),
-            "video_path": metadata.get("video_path"),
-            "backend": "local",
-            "searchable_text": searchable_text or name,
-            "content_hash": content_hash,
-        }
-        if source_meta:
-            source_row.update(source_meta)
-        st.session_state.doc_sources.append(source_row)
+        metadata["source_id"] = sid
+        chroma_collection.upsert(ids=[doc_id], embeddings=[emb.tolist()], metadatas=[metadata])
+
+        artifact = {"chroma_id": doc_id, "file_path": file_path,
+                    "preview_path": preview_path, "video_path": video_path}
+        display_name = name.split(" · ")[0]
+
+        existing = next((s for s in st.session_state.doc_sources if s.get("source_id") == sid), None)
+        if existing:
+            existing.setdefault("chroma_ids", [existing.get("id")]).append(doc_id)
+            existing.setdefault("artifacts", []).append(artifact)
+        else:
+            source_row = {
+                "source_id": sid,
+                "id": doc_id,
+                "name": display_name,
+                "type": doc_type,
+                "mime": mime,
+                "file_path": file_path,
+                "preview_path": preview_path,
+                "video_path": video_path,
+                "backend": "local",
+                "searchable_text": searchable_text or name,
+                "content_hash": content_hash,
+                "chroma_ids": [doc_id],
+                "artifacts": [artifact],
+            }
+            if source_meta:
+                source_row.update({k: v for k, v in source_meta.items() if k != "source_id"})
+            st.session_state.doc_sources.append(source_row)
+
         upsert_source({
-            "source_id": source_id,
+            "source_id": sid,
             "doc_id": doc_id,
-            "name": name,
+            "name": display_name,
             "type": doc_type,
             "backend": "local",
             "mime": mime,
-            "file_path": metadata["file_path"],
-            "preview_path": metadata.get("preview_path"),
-            "video_path": metadata.get("video_path"),
+            "file_path": file_path,
+            "preview_path": preview_path,
+            "video_path": video_path,
             "searchable_text": searchable_text or name,
             "corpus_id": st.session_state.corpus_id,
             "timestamp_start_sec": (source_meta or {}).get("timestamp_start_sec"),
@@ -606,6 +623,7 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "transcript": (source_meta or {}).get("transcript", ""),
             "content_hash": content_hash,
             "chroma_ids": [doc_id],
+            "artifacts": [artifact],
         })
     except Exception as e:
         st.error(f"Error saving to database: {e}")
@@ -897,6 +915,7 @@ if uploaded_files:
             progress.progress((i + 1) / total, text=f"Skipped {file.name} (already indexed)")
             continue
         existing_hashes.add(content_hash)
+        file_source_id = str(uuid.uuid4())  # one source row per uploaded file
 
         if retrieval_strategy == "Managed RAG (Google File Search)":
             add_file_to_google_store(file.name, file_bytes, mime, content_hash=content_hash)
@@ -908,7 +927,7 @@ if uploaded_files:
                                  preview_bytes=preview_png,
                                  searchable_text=f"{file.name} {page_label}\n{chunk_text}",
                                  source_meta={"page_range": page_label},
-                                 content_hash=content_hash)
+                                 content_hash=content_hash, source_id=file_source_id)
         elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
             audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
             audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
@@ -935,6 +954,7 @@ if uploaded_files:
                         ),
                         source_meta=audio_meta,
                         content_hash=content_hash,
+                        source_id=file_source_id,
                     )
         elif mime in ("video/mp4", "video/quicktime"):
             duration = get_video_duration_seconds(file_bytes)
@@ -969,6 +989,7 @@ if uploaded_files:
                         ),
                         source_meta=video_meta,
                         content_hash=content_hash,
+                        source_id=file_source_id,
                     )
         else:
             cap = per_file_captions.get(file.name, image_caption)
@@ -983,7 +1004,7 @@ if uploaded_files:
                 add_document(emb, label, "image", mime, file_bytes,
                              searchable_text=build_image_searchable_text(file.name, cap or ""),
                              source_meta={"caption": cap or ""},
-                             content_hash=content_hash)
+                             content_hash=content_hash, source_id=file_source_id)
 
         added += 1
         progress.progress((i + 1) / total, text=f"Processed {file.name}")

@@ -33,6 +33,29 @@ def _save_registry(payload: dict[str, Any]):
         raise
 
 
+_MERGE_LIST_FIELDS = ("chroma_ids", "artifacts")
+
+
+def _merge_source(existing: dict[str, Any], entry: dict[str, Any]) -> dict[str, Any]:
+    """Merge a new chunk into an existing file row, accumulating list fields.
+
+    One uploaded file maps to one row; each chunk calls upsert with the same
+    `source_id`, so `chroma_ids` and `artifacts` grow instead of overwriting.
+    Scalar fields take the latest value.
+    """
+    merged = dict(existing)
+    for key, value in entry.items():
+        if key in _MERGE_LIST_FIELDS:
+            combined = list(existing.get(key) or [])
+            for item in value or []:
+                if item not in combined:
+                    combined.append(item)
+            merged[key] = combined
+        else:
+            merged[key] = value
+    return merged
+
+
 def upsert_source(entry: dict[str, Any]):
     payload = _load_registry()
     sources = payload.get("sources", [])
@@ -40,7 +63,7 @@ def upsert_source(entry: dict[str, Any]):
     updated = False
     for idx, source in enumerate(sources):
         if source.get("source_id") == source_id:
-            sources[idx] = entry
+            sources[idx] = _merge_source(source, entry)
             updated = True
             break
     if not updated:

@@ -45,23 +45,28 @@ def source_chroma_ids(source: dict[str, Any]) -> list[str]:
     return []
 
 
-def pop_source_and_embedding(
+def source_artifacts(source: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per-chunk blob records for a source, for cleanup on delete.
+
+    Falls back to the row's own paths for legacy single-chunk rows that predate
+    artifact tracking.
+    """
+    if source.get("artifacts"):
+        return list(source["artifacts"])
+    paths = {k: source.get(k) for k in ("file_path", "preview_path", "video_path") if source.get(k)}
+    return [paths] if paths else []
+
+
+def pop_source_by_id(
     sources: list[dict[str, Any]],
-    embeddings: list[Any],
-    source_index: int,
+    source_id: str,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Remove one UI source and its matching local embedding, if it has one."""
-    if source_index < 0 or source_index >= len(sources):
-        raise IndexError("source_index out of range")
-
-    source = sources[source_index]
-    local_embedding_index = sum(1 for item in sources[:source_index] if is_local_source(item))
-    removed = sources.pop(source_index)
-
-    if is_local_source(source) and local_embedding_index < len(embeddings):
-        embeddings.pop(local_embedding_index)
-
-    return removed, source_chroma_ids(removed)
+    """Remove a source row by `source_id`, returning (removed_row, chroma_ids)."""
+    for idx, source in enumerate(sources):
+        if source.get("source_id") == source_id:
+            removed = sources.pop(idx)
+            return removed, source_chroma_ids(removed)
+    return {}, []
 
 
 def build_rehydrated_sources(registry_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -91,6 +96,7 @@ def build_rehydrated_sources(registry_rows: list[dict[str, Any]]) -> list[dict[s
             "searchable_text": row.get("searchable_text", ""),
             "content_hash": row.get("content_hash", ""),
             "chroma_ids": row.get("chroma_ids") or [doc_id],
+            "artifacts": row.get("artifacts") or [],
             "page_range": row.get("page_range"),
             "caption": row.get("caption"),
             "timestamp_start_sec": row.get("timestamp_start_sec"),

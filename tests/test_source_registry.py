@@ -28,6 +28,20 @@ class SourceRegistryTest(unittest.TestCase):
         source_registry.delete_source("s1")
         self.assertEqual(source_registry.list_sources("c1"), [])
 
+    def test_upsert_merges_chroma_ids_and_artifacts_per_file(self):
+        source_registry.upsert_source({
+            "source_id": "file1", "corpus_id": "c1", "name": "doc.pdf",
+            "chroma_ids": ["chunk-a"], "artifacts": [{"chroma_id": "chunk-a", "file_path": "a"}],
+        })
+        source_registry.upsert_source({
+            "source_id": "file1", "corpus_id": "c1", "name": "doc.pdf",
+            "chroma_ids": ["chunk-b"], "artifacts": [{"chroma_id": "chunk-b", "file_path": "b"}],
+        })
+        rows = source_registry.list_sources("c1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["chroma_ids"], ["chunk-a", "chunk-b"])
+        self.assertEqual([a["file_path"] for a in rows[0]["artifacts"]], ["a", "b"])
+
     def test_atomic_write_leaves_no_temp_files(self):
         source_registry.upsert_source({"source_id": "s1", "name": "doc", "corpus_id": "c1"})
         source_registry.upsert_source({"source_id": "s2", "name": "doc2", "corpus_id": "c1"})

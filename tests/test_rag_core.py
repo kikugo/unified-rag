@@ -8,41 +8,40 @@ from rag_core import (
     is_rate_limit_error,
     reciprocal_rank_fusion,
     tokenize_for_search,
-    pop_source_and_embedding,
+    pop_source_by_id,
+    source_artifacts,
     select_context_results,
 )
 
 
 class RagCoreTest(unittest.TestCase):
-    def test_pop_managed_source_does_not_remove_local_embedding(self):
+    def test_pop_source_by_id_removes_row_and_returns_all_chunk_ids(self):
         sources = [
-            {"id": "local-1", "name": "chart.png", "backend": "local"},
-            {"name": "cloud.pdf", "backend": "managed"},
-            {"id": "local-2", "name": "slide.png", "backend": "local"},
+            {"source_id": "f1", "id": "chunk-a", "name": "doc.pdf", "backend": "local",
+             "chroma_ids": ["chunk-a", "chunk-b"]},
+            {"source_id": "f2", "id": "img", "name": "chart.png", "backend": "local",
+             "chroma_ids": ["img"]},
         ]
-        embeddings = [[1.0], [2.0]]
 
-        removed, chroma_ids = pop_source_and_embedding(sources, embeddings, 1)
+        removed, chroma_ids = pop_source_by_id(sources, "f1")
 
-        self.assertEqual(removed["name"], "cloud.pdf")
+        self.assertEqual(removed["name"], "doc.pdf")
+        self.assertEqual(chroma_ids, ["chunk-a", "chunk-b"])
+        self.assertEqual([s["source_id"] for s in sources], ["f2"])
+
+    def test_pop_source_by_id_missing_is_noop(self):
+        sources = [{"source_id": "f1", "id": "x", "backend": "local"}]
+        removed, chroma_ids = pop_source_by_id(sources, "nope")
+        self.assertEqual(removed, {})
         self.assertEqual(chroma_ids, [])
-        self.assertEqual([s["name"] for s in sources], ["chart.png", "slide.png"])
-        self.assertEqual(embeddings, [[1.0], [2.0]])
+        self.assertEqual(len(sources), 1)
 
-    def test_pop_local_source_after_managed_removes_matching_embedding(self):
-        sources = [
-            {"id": "local-1", "name": "chart.png", "backend": "local"},
-            {"name": "cloud.pdf", "backend": "managed"},
-            {"id": "local-2", "name": "slide.png", "backend": "local"},
-        ]
-        embeddings = [[1.0], [2.0]]
-
-        removed, chroma_ids = pop_source_and_embedding(sources, embeddings, 2)
-
-        self.assertEqual(removed["name"], "slide.png")
-        self.assertEqual(chroma_ids, ["local-2"])
-        self.assertEqual([s["name"] for s in sources], ["chart.png", "cloud.pdf"])
-        self.assertEqual(embeddings, [[1.0]])
+    def test_source_artifacts_falls_back_to_row_paths(self):
+        with_artifacts = {"artifacts": [{"chroma_id": "a", "file_path": "p1"}]}
+        self.assertEqual(source_artifacts(with_artifacts), [{"chroma_id": "a", "file_path": "p1"}])
+        legacy = {"file_path": "p2", "preview_path": "pv"}
+        self.assertEqual(source_artifacts(legacy), [{"file_path": "p2", "preview_path": "pv"}])
+        self.assertEqual(source_artifacts({}), [])
 
     def test_select_context_results_caps_results_and_assigns_citation_ids(self):
         results = [

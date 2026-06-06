@@ -6,6 +6,7 @@ from rag_core import (
     build_rehydrated_sources,
     call_with_retry,
     is_rate_limit_error,
+    is_transient_error,
     reciprocal_rank_fusion,
     tokenize_for_search,
     pop_source_by_id,
@@ -121,6 +122,23 @@ class RagCoreTest(unittest.TestCase):
         self.assertTrue(is_rate_limit_error(Exception("429 RESOURCE_EXHAUSTED")))
         self.assertTrue(is_rate_limit_error(Exception("Quota exceeded for requests")))
         self.assertFalse(is_rate_limit_error(Exception("400 invalid argument")))
+
+    def test_is_transient_error_includes_503_and_rate_limits(self):
+        self.assertTrue(is_transient_error(Exception("503 UNAVAILABLE: model overloaded")))
+        self.assertTrue(is_transient_error(Exception("429 rate limit")))
+        self.assertFalse(is_transient_error(Exception("400 invalid argument")))
+
+    def test_call_with_retry_retries_503_then_succeeds(self):
+        calls = {"n": 0}
+
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise Exception("503 UNAVAILABLE")
+            return "ok"
+
+        self.assertEqual(call_with_retry(flaky, attempts=3, sleep=lambda _: None), "ok")
+        self.assertEqual(calls["n"], 2)
 
     def test_call_with_retry_returns_first_success_without_sleeping(self):
         sleeps = []

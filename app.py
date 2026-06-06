@@ -8,6 +8,7 @@ import pandas as pd
 import base64
 import uuid
 import tempfile
+import time
 import os
 from PIL import Image
 from google import genai
@@ -19,6 +20,7 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
+    is_transient_error,
     pop_source_by_id,
     reciprocal_rank_fusion,
     select_context_results,
@@ -637,16 +639,29 @@ def answer(question: str, selected_results: list[dict],
         role="user",
         parts=parts,
     ))
-    try:
-        stream = client.models.generate_content_stream(
-            model="gemini-2.5-flash",
-            contents=contents,
-        )
-        for chunk in stream:
-            if chunk.text:
-                yield chunk.text
-    except Exception as e:
-        yield f"Generation error: {e}"
+    for attempt in range(3):
+        produced = False
+        try:
+            stream = client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=contents,
+            )
+            for chunk in stream:
+                if chunk.text:
+                    produced = True
+                    yield chunk.text
+            return
+        except Exception as e:
+            # Retry transient failures, but only if nothing has streamed yet —
+            # once text is on screen we can't cleanly restart.
+            if not produced and is_transient_error(e) and attempt < 2:
+                time.sleep(2 ** attempt)
+                continue
+            if produced:
+                yield "\n\n⚠️ The answer was cut off — the model hiccupped. Please ask again."
+            else:
+                yield "⚠️ The model is busy right now (try again in a moment)."
+            return
 
 def answer_managed(question: str,
                    history: list[dict] | None = None) -> tuple[object, list[str]]:
@@ -669,7 +684,7 @@ def answer_managed(question: str,
 
     citations = []
     try:
-        stream = client.models.generate_content_stream(
+        full_chunks = call_with_retry(lambda: list(client.models.generate_content_stream(
             model="gemini-2.5-pro",
             contents=contents,
             config=types.GenerateContentConfig(
@@ -681,8 +696,7 @@ def answer_managed(question: str,
                     )
                 ]
             )
-        )
-        full_chunks = list(stream)
+        )))
         if full_chunks and full_chunks[-1].candidates:
             meta = full_chunks[-1].candidates[0].grounding_metadata
             if meta and hasattr(meta, 'grounding_chunks'):
@@ -698,12 +712,9 @@ def answer_managed(question: str,
                     yield c.text
 
         return _gen(), citations
-    except Exception as e:
-        # Capture the message now: Python deletes `e` when the except block
-        # exits, and this generator is iterated later by st.write_stream.
-        error_message = f"Managed generation error: {e}"
+    except Exception:
         def _error():
-            yield error_message
+            yield "⚠️ The managed backend is unavailable right now (try again in a moment)."
         return _error(), []
 
 SAMPLE_IMAGES = {

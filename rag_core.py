@@ -18,17 +18,26 @@ def is_rate_limit_error(error: Exception) -> bool:
     return any(token in msg for token in ("429", "resource_exhausted", "rate limit", "quota"))
 
 
-def call_with_retry(fn: Callable, attempts: int = 3, base_delay: float = 1.0, sleep=time.sleep):
-    """Call fn(), retrying on rate-limit errors with exponential backoff.
+def is_transient_error(error: Exception) -> bool:
+    """True for errors worth retrying: rate limits plus transient server faults
+    like 503 overload, which Gemini returns under load."""
+    if is_rate_limit_error(error):
+        return True
+    msg = str(error).lower()
+    return any(token in msg for token in ("503", "unavailable", "overloaded", "internal error", "timeout"))
 
-    Non-rate-limit errors raise immediately; rate-limit errors raise after the
-    final attempt. `sleep` is injectable so tests can run without real delays.
+
+def call_with_retry(fn: Callable, attempts: int = 3, base_delay: float = 1.0, sleep=time.sleep):
+    """Call fn(), retrying transient errors with exponential backoff.
+
+    Non-transient errors raise immediately; transient ones raise after the final
+    attempt. `sleep` is injectable so tests can run without real delays.
     """
     for attempt in range(attempts):
         try:
             return fn()
         except Exception as error:
-            if attempt == attempts - 1 or not is_rate_limit_error(error):
+            if attempt == attempts - 1 or not is_transient_error(error):
                 raise
             sleep(base_delay * (2 ** attempt))
 

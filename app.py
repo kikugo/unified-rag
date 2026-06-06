@@ -1056,8 +1056,12 @@ else:
                 "citations": citations,
             })
         else:
+            # Rewrite contextual follow-ups ("at which timestamp?") into a
+            # standalone query so retrieval stays on the prior subject. The answer
+            # still uses the original wording.
+            search_query = gemini.rewrite_search_query(query, st.session_state.messages[:-1])
             with st.spinner("Searching Local Vector Store…"):
-                results = search(query, top_k=top_k)
+                results = search(search_query, top_k=top_k)
 
             with st.chat_message("assistant"):
                 if results:

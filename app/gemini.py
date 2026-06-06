@@ -67,6 +67,35 @@ def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
         return ""
 
 
+def rewrite_search_query(query: str, history: list[dict] | None, max_turns: int = 4) -> str:
+    """Turn a contextual follow-up into a standalone search query using recent chat.
+
+    "at which timestamp" after "which audio has this lyric" becomes a query that
+    still mentions the lyric, so retrieval doesn't drift to unrelated docs. Returns
+    the original query when there's no history or on any failure.
+    """
+    prior = [m for m in (history or []) if m.get("role") in ("user", "assistant") and m.get("content")]
+    prior = prior[-max_turns:]
+    if not prior:
+        return query
+    convo = "\n".join(f"{m['role']}: {m['content']}" for m in prior)
+    prompt = (
+        "Rewrite the user's latest question into a single standalone search query that captures "
+        "what they are actually looking for, using the conversation for context. Keep concrete "
+        "terms (names, quoted lines, numbers). Output only the query text.\n\n"
+        f"Conversation so far:\n{convo}\n\nLatest question: {query}\n\nStandalone search query:"
+    )
+    try:
+        resp = call_with_retry(lambda: _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        ))
+        rewritten = (resp.text or "").strip()
+        return rewritten or query
+    except Exception:
+        return query
+
+
 def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
     """Best-effort speech-to-text for one audio chunk via Gemini.
 

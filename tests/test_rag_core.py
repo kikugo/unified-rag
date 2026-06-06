@@ -68,6 +68,10 @@ class RagCoreTest(unittest.TestCase):
         self.assertIn("[S2] contract.pdf pages 3-4", prompt)
         self.assertIn("cite the source IDs", prompt)
         self.assertIn("What is the termination clause?", prompt)
+        # guards against the model miscounting, mislabeling frames, or inventing timestamps
+        self.assertIn("not the full library", prompt)
+        self.assertIn("video frame", prompt)
+        self.assertIn("do not invent", prompt)
 
     def test_tokenize_for_search_keeps_exact_match_terms(self):
         tokens = tokenize_for_search("Gemini-2.5 Flash handles SKU ABC-123 and error_code 0xDEAD.")

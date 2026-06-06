@@ -127,6 +127,11 @@ def build_local_answer_prompt(question: str, selected_results: list[dict[str, An
     lines = [
         "Use the retrieved sources below to answer the user's question.",
         "Ground the answer only in these sources. When you use evidence, cite the source IDs like [S1].",
+        "These are the most relevant excerpts retrieved, not the full library. Do not state how many "
+        "documents exist or treat this list as the complete set.",
+        "Describe each source by its real type: a video frame is a still frame from a video, not a photo.",
+        "Cite a page range or timestamp only as it is given for a source; do not invent more precise "
+        "pages or timestamps than provided.",
         "If the sources do not contain the answer, say that clearly.",
         "",
         "Retrieved sources:",

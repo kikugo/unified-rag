@@ -699,8 +699,11 @@ def answer_managed(question: str,
 
         return _gen(), citations
     except Exception as e:
+        # Capture the message now: Python deletes `e` when the except block
+        # exits, and this generator is iterated later by st.write_stream.
+        error_message = f"Managed generation error: {e}"
         def _error():
-            yield f"Managed generation error: {e}"
+            yield error_message
         return _error(), []
 
 SAMPLE_IMAGES = {
@@ -1007,8 +1010,11 @@ else:
         if retrieval_strategy == "Auto (Hybrid)":
             with st.spinner("🤖 Routing query to best backend…"):
                 route = route_query(query)
-            st.toast(f"Routed to **{'Google Managed RAG' if route == 'managed' else 'Local Vector Store'}**", icon="🔀")
-            use_managed = (route == "managed")
+            # Only use managed if there are actually managed docs; otherwise the
+            # store is empty and the router would send the query nowhere useful.
+            has_managed_docs = any(s.get("backend") == MANAGED_BACKEND for s in st.session_state.doc_sources)
+            use_managed = (route == "managed" and has_managed_docs)
+            st.toast(f"Routed to **{'Google Managed RAG' if use_managed else 'Local Vector Store'}**", icon="🔀")
         else:
             use_managed = (retrieval_strategy == "Managed RAG (Google File Search)")
 

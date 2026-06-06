@@ -906,6 +906,13 @@ def _seek_seconds(value) -> int:
         return 0
 
 
+def _escaped_stream(chunks):
+    """Escape `$` in streamed answer text so dollar amounts don't trigger
+    Streamlit's LaTeX math mode (which eats spaces and italicizes whole runs)."""
+    for chunk in chunks:
+        yield chunk.replace("$", "\\$") if chunk else chunk
+
+
 def render_results_gallery(results, show_score=False):
     if not results:
         return
@@ -1025,7 +1032,7 @@ else:
                 with st.spinner("Searching Google backend…"):
                     gen, citations = answer_managed(query,
                                                    history=st.session_state.messages)
-                full_text = st.write_stream(gen)
+                full_text = st.write_stream(_escaped_stream(gen))
                 if citations:
                     st.caption(f"**Sources:** {', '.join(citations)}")
                 if st.button("🔊 Read", key="tts_live_managed", help="Read this answer aloud"):
@@ -1044,10 +1051,10 @@ else:
             with st.chat_message("assistant"):
                 if results:
                     selected_results = select_context_results(results, max_results=top_k)
-                    full_text = st.write_stream(
+                    full_text = st.write_stream(_escaped_stream(
                         answer(query, selected_results,
                                history=st.session_state.messages)
-                    )
+                    ))
                     source_labels = [
                         f"[{res['citation_id']}] {res['name']}" for res in selected_results
                     ]

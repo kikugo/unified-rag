@@ -925,12 +925,14 @@ def render_results_gallery(results, show_score=False):
             elif res_type == "video":
                 st.video(res["bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
             elif res_type == "video_frame":
+                # Show just the frame image. Rendering the full source video per
+                # result is enormous (one big file copied per hit); the source
+                # video stays one click away under "Open Sn".
                 if res.get("preview_bytes"):
                     st.image(res["preview_bytes"], width="stretch")
+                    st.caption("🎥 video frame")
                 else:
                     st.markdown("🎞️ Frame")
-                if res.get("video_bytes"):
-                    st.video(res["video_bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
             else:
                 st.markdown("📄")
             

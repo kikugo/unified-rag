@@ -20,6 +20,7 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
+    format_token_usage,
     is_transient_error,
     pop_source_by_id,
     reciprocal_rank_fusion,
@@ -635,6 +636,18 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
     # keyword-only hits (whose dense score is 0), so we trust the fused order.
     return out
 
+def _usage_dict(usage) -> dict | None:
+    """Flatten a Gemini usage_metadata object into a plain token dict."""
+    if not usage:
+        return None
+    return {
+        "prompt": getattr(usage, "prompt_token_count", 0) or 0,
+        "output": getattr(usage, "candidates_token_count", 0) or 0,
+        "total": getattr(usage, "total_token_count", 0) or 0,
+        "thinking": getattr(usage, "thoughts_token_count", 0) or 0,
+    }
+
+
 def answer(question: str, selected_results: list[dict],
            history: list[dict] | None = None):
     """Stream a grounded answer from Gemini 2.5 Flash, with optional conversation history.
@@ -671,6 +684,9 @@ def answer(question: str, selected_results: list[dict],
                 contents=contents,
             )
             for chunk in stream:
+                usage = getattr(chunk, "usage_metadata", None)
+                if usage:
+                    st.session_state.last_usage = _usage_dict(usage)
                 if chunk.text:
                     produced = True
                     yield chunk.text
@@ -721,6 +737,8 @@ def answer_managed(question: str,
                 ]
             )
         )))
+        if full_chunks:
+            st.session_state.last_usage = _usage_dict(getattr(full_chunks[-1], "usage_metadata", None))
         if full_chunks and full_chunks[-1].candidates:
             meta = full_chunks[-1].candidates[0].grounding_metadata
             if meta and hasattr(meta, 'grounding_chunks'):
@@ -1043,6 +1061,8 @@ else:
                 render_results_gallery(msg["results"])
             if msg.get("citations"):
                 st.caption(f"**Sources:** {', '.join(msg['citations'])}")
+            if msg.get("usage"):
+                st.caption(format_token_usage(msg["usage"]))
             # Read Aloud button — only for assistant messages
             if msg["role"] == "assistant" and msg.get("content"):
                 msg_idx = st.session_state.messages.index(msg)
@@ -1054,6 +1074,7 @@ else:
     query = st.chat_input("Ask a question about your documents…", key="chat_input") or st.session_state.pop("pending_query", None)
 
     if query:
+        st.session_state.last_usage = None  # reset; populated by the answer call
         with st.chat_message("user"):
             st.markdown(query)
         st.session_state.messages.append({"role": "user", "content": query})
@@ -1078,6 +1099,9 @@ else:
                 full_text = st.write_stream(_escaped_stream(gen))
                 if citations:
                     st.caption(f"**Sources:** {', '.join(citations)}")
+                usage = st.session_state.get("last_usage")
+                if usage:
+                    st.caption(format_token_usage(usage))
                 if st.button("🔊 Read", key="tts_live_managed", help="Read this answer aloud"):
                     st.session_state.tts_pending = full_text
                     st.rerun()
@@ -1086,6 +1110,7 @@ else:
                 "content": full_text,
                 "results": [],
                 "citations": citations,
+                "usage": usage,
             })
         else:
             # Rewrite contextual follow-ups ("at which timestamp?") into a
@@ -1105,6 +1130,9 @@ else:
                     source_labels = [
                         f"[{res['citation_id']}] {res['name']}" for res in selected_results
                     ]
+                    usage = st.session_state.get("last_usage")
+                    if usage:
+                        st.caption(format_token_usage(usage))
                     render_results_gallery(selected_results)
                     st.caption("Sources — expand to view the cited page, frame, or clip:")
                     for src in selected_results:
@@ -1118,6 +1146,7 @@ else:
                         "content": full_text,
                         "results": selected_results,
                         "citations": source_labels,
+                        "usage": usage,
                     })
                 else:
                     msg = "No results found — try rephrasing your question."

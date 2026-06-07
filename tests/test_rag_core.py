@@ -5,6 +5,7 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
+    format_token_usage,
     is_rate_limit_error,
     is_transient_error,
     reciprocal_rank_fusion,
@@ -126,6 +127,13 @@ class RagCoreTest(unittest.TestCase):
         self.assertTrue(is_rate_limit_error(Exception("429 RESOURCE_EXHAUSTED")))
         self.assertTrue(is_rate_limit_error(Exception("Quota exceeded for requests")))
         self.assertFalse(is_rate_limit_error(Exception("400 invalid argument")))
+
+    def test_format_token_usage(self):
+        self.assertEqual(format_token_usage(None), "")
+        out = format_token_usage({"prompt": 980, "output": 254, "total": 1234})
+        self.assertEqual(out, "🔢 1,234 tokens (in 980 · out 254)")
+        with_think = format_token_usage({"prompt": 8, "output": 2, "total": 30, "thinking": 20})
+        self.assertIn("thinking 20", with_think)
 
     def test_is_transient_error_includes_503_and_rate_limits(self):
         self.assertTrue(is_transient_error(Exception("503 UNAVAILABLE: model overloaded")))

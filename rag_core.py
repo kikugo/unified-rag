@@ -18,6 +18,20 @@ def is_rate_limit_error(error: Exception) -> bool:
     return any(token in msg for token in ("429", "resource_exhausted", "rate limit", "quota"))
 
 
+def format_token_usage(usage: dict | None) -> str:
+    """One-line token summary for a RAG answer.
+
+    e.g. "🔢 1,234 tokens (in 980 · out 254)". Thinking tokens (gemini-2.5
+    reasoning) are shown separately when present, since total includes them.
+    """
+    if not usage:
+        return ""
+    parts = [f"in {usage.get('prompt', 0):,}", f"out {usage.get('output', 0):,}"]
+    if usage.get("thinking"):
+        parts.append(f"thinking {usage['thinking']:,}")
+    return f"🔢 {usage.get('total', 0):,} tokens ({' · '.join(parts)})"
+
+
 def is_transient_error(error: Exception) -> bool:
     """True for errors worth retrying: rate limits plus transient server faults
     like 503 overload, which Gemini returns under load."""

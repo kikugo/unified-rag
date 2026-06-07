@@ -84,6 +84,8 @@ if "corpus_id" not in st.session_state:
     st.session_state.corpus_id = load_or_create_corpus_id()
 if "pending_clear_all" not in st.session_state:
     st.session_state.pending_clear_all = False
+if "confirm_clear_all" not in st.session_state:
+    st.session_state.confirm_clear_all = False
 if "pending_delete_chroma_ids" not in st.session_state:
     st.session_state.pending_delete_chroma_ids = []
 if "pending_cleanup_paths" not in st.session_state:
@@ -140,26 +142,156 @@ with st.sidebar:
     st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
 
     st.markdown("---")
-    st.subheader("⚙️ Settings")
-    
-    retrieval_strategy = st.radio(
-        "Retrieval Strategy",
+    # ---------- Add files ----------
+    st.subheader("📤 Add files")
+    uploaded_files = st.file_uploader(
+        "Files",
+        type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+
+    # Show ingest options only for the file types actually selected, so a PDF
+    # upload isn't buried under image-caption and audio fields.
+    _sel_mimes = {(f.type or "") for f in (uploaded_files or [])}
+    _has_images = any(m.startswith("image") for m in _sel_mimes)
+    _has_audio = any(m in ("audio/mpeg", "audio/mp3", "audio/wav") for m in _sel_mimes)
+    _has_video = any(m in ("video/mp4", "video/quicktime") for m in _sel_mimes)
+
+    image_caption = ""
+    image_captions_map_raw = ""
+    auto_caption_images = True
+    transcribe_audio = True
+    scene_sampling = True
+
+    if _has_images:
+        image_caption = st.text_input(
+            "Image caption (optional)",
+            placeholder="e.g. Tesla Q4 2024 earnings slide",
+            key="image_caption",
+        )
+        image_captions_map_raw = st.text_area(
+            "Per-image captions (one per line: filename|caption)",
+            value="",
+            key="image_captions_map",
+            help="Example: chart1.png|Revenue by quarter",
+        )
+        auto_caption_images = st.checkbox(
+            "Auto-caption images when caption missing", value=True, key="auto_caption_images"
+        )
+    if _has_audio or _has_video:
+        transcribe_audio = st.checkbox(
+            "Transcribe audio (speech-to-text)",
+            value=True,
+            key="transcribe_audio",
+            help="Use Gemini to transcribe each audio chunk so spoken words become searchable. Adds one API call per chunk.",
+        )
+    if _has_video:
+        scene_sampling = st.checkbox(
+            "Scene-based video frames",
+            value=True,
+            key="scene_sampling",
+            help="Skip near-duplicate frames so a held slide indexes once instead of many times.",
+        )
+
+    if st.button("⚡ Load 6 sample charts", key="load_samples_btn"):
+        st.session_state.load_samples_requested = True
+
+    st.markdown("---")
+    # ---------- Your library ----------
+    st.subheader("📚 Your library")
+    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️", "video_frame": "🎞️"}
+    sources = st.session_state.doc_sources
+
+    if not sources:
+        st.caption("📭 Nothing loaded yet — add files above.")
+    else:
+        if st.session_state.get("confirm_clear_all"):
+            st.warning("Remove all documents from your library?")
+            cc1, cc2 = st.columns(2)
+            if cc1.button("Yes, clear all", key="confirm_clear_yes", use_container_width=True):
+                st.session_state.pending_clear_all = True
+                st.session_state.confirm_clear_all = False
+                st.rerun()
+            if cc2.button("Cancel", key="confirm_clear_no", use_container_width=True):
+                st.session_state.confirm_clear_all = False
+                st.rerun()
+        else:
+            top1, top2 = st.columns([2, 1])
+            top1.caption(f"{len(sources)} document(s)")
+            if top2.button("Clear all", key="clear_all_btn", use_container_width=True):
+                st.session_state.confirm_clear_all = True
+                st.rerun()
+
+        type_options = ["All"] + sorted({s["type"] for s in sources})
+        type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
+
+        df = pd.DataFrame([
+            {"source_id": s["source_id"], "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
+            for s in sources
+            if type_filter == "All" or s["type"] == type_filter
+        ])
+        event = st.dataframe(
+            df[["Icon", "Name", "Type"]],
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="multi-row",
+            key="doc_table",
+        )
+        selected_ids = [df.iloc[r]["source_id"] for r in event.selection.rows]
+        if st.button(
+            f"🗑 Delete selected ({len(selected_ids)})",
+            key="delete_sel_btn",
+            disabled=not selected_ids,
+            use_container_width=True,
+        ):
+            for sid in selected_ids:
+                removed, chroma_ids = pop_source_by_id(st.session_state.doc_sources, sid)
+                for artifact in source_artifacts(removed):
+                    for path_key in ("file_path", "preview_path", "video_path"):
+                        if artifact.get(path_key):
+                            st.session_state.pending_cleanup_paths.append(artifact[path_key])
+                if removed.get("source_id"):
+                    delete_source(removed["source_id"])
+                st.session_state.pending_delete_chroma_ids.extend(chroma_ids)
+            st.rerun()
+
+    st.markdown("---")
+    # ---------- Search by image ----------
+    with st.expander("🔍 Search by image", expanded=False):
+        st.caption("Upload an image to find visually similar content.")
+        query_image_sidebar = st.file_uploader(
+            "Query image",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=False,
+            key="image_query_uploader",
+            label_visibility="collapsed",
+        )
+        top_k_img = st.slider("Results", min_value=1, max_value=5, value=3, key="top_k_img")
+        run_img_query = st.button(
+            "🔍 Find Similar",
+            key="img_search_btn",
+            disabled=not (query_image_sidebar and st.session_state.doc_sources),
+        )
+
+    st.markdown("---")
+    # ---------- Settings ----------
+    retrieval_strategy = st.selectbox(
+        "Retrieval strategy",
         ["Auto (Hybrid)", "Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
-        help="Auto: Gemini classifies each query and picks the best backend. Local: always searches your embedded files. Managed: always queries Google File Search.",
-        key="retrieval_strategy"
+        key="retrieval_strategy",
+        help="Auto: Gemini picks the backend per query. Local: your embedded files. Managed: Google File Search.",
     )
-    
-    st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
-
-    st.checkbox(
-        "Expand query (HyDE)",
-        value=False,
-        key="use_hyde",
-        help="Draft a hypothetical answer, embed it, and average with your question's embedding. Better recall on vague questions; adds a Gemini call per search.",
-    )
-
-    with st.expander("Advanced Vector Storage (ChromaDB)", expanded=False):
-        st.caption("Leave blank to use a local, embedded database.")
+    with st.expander("⚙️ Settings", expanded=False):
+        st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
+        st.checkbox(
+            "Expand query (HyDE)",
+            value=False,
+            key="use_hyde",
+            help="Draft a hypothetical answer, embed it, and average with your question's embedding. Adds a Gemini call per search.",
+        )
+        st.caption("Advanced vector storage (ChromaDB) — leave blank for a local database.")
         st.text_input("Chroma Tenant", value="", key="chroma_tenant")
         st.text_input("Chroma Database", value="", key="chroma_database")
         st.text_input("Chroma API Key", type="password", key="chroma_api_key")
@@ -172,117 +304,9 @@ with st.sidebar:
             st.session_state.corpus_id = str(uuid.uuid4())
             set_corpus_id(st.session_state.corpus_id)
             st.toast("Dimension changed — documents cleared. Re-upload to re-embed.", icon="⚠️")
+            st.session_state.active_dim = st.session_state.embedding_dim
+            st.rerun()
         st.session_state.active_dim = st.session_state.embedding_dim
-
-    st.markdown("---")
-    doc_count = len(st.session_state.doc_sources)
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        st.caption(f"📚 {doc_count} document(s) loaded")
-    with c2:
-        if st.button("🗑️", key="clear_btn", disabled=doc_count == 0, help="Clear all"):
-            st.session_state.pending_clear_all = True
-
-    # Document Manager
-    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️", "video_frame": "🎞️"}
-    sources = st.session_state.doc_sources
-
-    if not sources:
-        st.caption("📭 No documents loaded yet.")
-    else:
-        type_options = ["All"] + sorted({s["type"] for s in sources})
-        type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
-
-        # Build dataframe; "source_id" tracks the row for safe deletion
-        df = pd.DataFrame([
-            {"source_id": s["source_id"], "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
-            for s in sources
-            if type_filter == "All" or s["type"] == type_filter
-        ])
-
-        event = st.dataframe(
-            df[["Icon", "Name", "Type"]],
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
-            key="doc_table",
-        )
-
-        selected_source_id = (
-            df.iloc[event.selection.rows[0]]["source_id"] if event.selection.rows else None
-        )
-
-        # Delete selected row
-        col_del, col_count = st.columns([1, 2])
-        with col_del:
-            if st.button("🗑 Delete", key="delete_row_btn", disabled=selected_source_id is None):
-                removed, chroma_ids = pop_source_by_id(
-                    st.session_state.doc_sources,
-                    selected_source_id,
-                )
-                for artifact in source_artifacts(removed):
-                    for path_key in ("file_path", "preview_path", "video_path"):
-                        if artifact.get(path_key):
-                            st.session_state.pending_cleanup_paths.append(artifact[path_key])
-                if removed.get("source_id"):
-                    delete_source(removed["source_id"])
-                st.session_state.pending_delete_chroma_ids.extend(chroma_ids)
-                st.rerun()
-        with col_count:
-            shown = len(df)
-            total = len(sources)
-            label = f"{shown} of {total}" if shown != total else f"{total}"
-            st.caption(f"📚 {label} document(s)")
-
-    st.markdown("---")
-    st.subheader("🔍 Image Query")
-    st.caption("Search by uploading an image instead of typing.")
-    query_image_sidebar = st.file_uploader(
-        "Query image",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=False,
-        key="image_query_uploader",
-        label_visibility="collapsed",
-    )
-    top_k_img = st.slider("Results", min_value=1, max_value=5, value=3, key="top_k_img")
-    run_img_query = st.button("🔍 Find Similar", key="img_search_btn",
-                              disabled=not (query_image_sidebar and st.session_state.doc_sources))
-
-    st.markdown("---")
-    st.subheader("📤 Upload")
-    image_caption = st.text_input(
-        "Image caption (optional)",
-        placeholder="e.g. Tesla Q4 2024 earnings slide",
-        key="image_caption",
-    )
-    image_captions_map_raw = st.text_area(
-        "Per-image captions (one per line: filename|caption)",
-        value="",
-        key="image_captions_map",
-        help="Example: chart1.png|Revenue by quarter",
-    )
-    auto_caption_images = st.checkbox("Auto-caption images when caption missing", value=True, key="auto_caption_images")
-    transcribe_audio = st.checkbox(
-        "Transcribe audio (speech-to-text)",
-        value=True,
-        key="transcribe_audio",
-        help="Use Gemini to transcribe each audio chunk so spoken words become searchable. Adds one API call per chunk.",
-    )
-    scene_sampling = st.checkbox(
-        "Scene-based video frames",
-        value=True,
-        key="scene_sampling",
-        help="Skip near-duplicate frames so a held slide indexes once instead of many times. Fewer embeddings, less redundancy.",
-    )
-    uploaded_files = st.file_uploader(
-        "Files",
-        type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
-        accept_multiple_files=True,
-        label_visibility="collapsed",
-    )
-    if st.button("⚡ Load Sample Images", key="load_samples_btn", help="Pre-load 6 financial charts"):
-        st.session_state.load_samples_requested = True
 
 # init client
 @st.cache_resource

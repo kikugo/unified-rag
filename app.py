@@ -214,8 +214,10 @@ with st.sidebar:
                 st.session_state.confirm_clear_all = False
                 st.rerun()
         else:
+            # chunk count = vectors actually in the local index for this corpus
+            chunk_count = sum(len(s.get("chroma_ids") or []) for s in sources)
             top1, top2 = st.columns([2, 1])
-            top1.caption(f"{len(sources)} document(s)")
+            top1.caption(f"{len(sources)} file(s) · {chunk_count} chunk(s) indexed")
             if top2.button("Clear all", key="clear_all_btn", use_container_width=True):
                 st.session_state.confirm_clear_all = True
                 st.rerun()

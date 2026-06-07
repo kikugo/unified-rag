@@ -92,9 +92,6 @@ if "pending_cleanup_paths" not in st.session_state:
     st.session_state.pending_cleanup_paths = []
 if "load_samples_requested" not in st.session_state:
     st.session_state.load_samples_requested = False
-if "selected_citation" not in st.session_state:
-    # the exact cited chunk: {source_id, chroma_id, label, page_range, timestamp_start_sec}
-    st.session_state.selected_citation = None
 
 # Rebuild the sidebar source list from the persisted registry once per session,
 # so a restart or browser refresh doesn't drop everything that's still indexed.
@@ -284,6 +281,7 @@ with st.sidebar:
         help="Auto: Gemini picks the backend per query. Local: your embedded files. Managed: Google File Search.",
     )
     with st.expander("⚙️ Settings", expanded=False):
+        st.slider("Results to retrieve", min_value=1, max_value=5, value=3, key="top_k")
         st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
         st.checkbox(
             "Expand query (HyDE)",
@@ -986,38 +984,27 @@ def render_results_gallery(results, show_score=False):
                 st.caption(f"{citation_prefix}{res.get('name', 'Unknown')}")
 
 
-def render_source_detail_panel():
-    citation = st.session_state.get("selected_citation")
-    if not citation:
-        return
-    all_sources = list_sources(st.session_state.corpus_id)
-    source = next((s for s in all_sources if s.get("source_id") == citation.get("source_id")), None)
-    if not source:
-        return
-    # Focus on the exact cited chunk (its page render / frame), not the file's first chunk.
-    chunk = next(
-        (a for a in source_artifacts(source) if a.get("chroma_id") == citation.get("chroma_id")),
-        None,
-    ) or {}
-    seek = _seek_seconds(citation.get("timestamp_start_sec"))
-    with st.expander("Selected Source Detail", expanded=True):
-        st.caption(f"Source: {citation.get('label') or source.get('name')}")
-        st.caption(f"Type: {source.get('type')}")
-        if citation.get("page_range"):
-            st.caption(f"Showing {citation.get('page_range')}")
-        if citation.get("timestamp_start_sec") is not None:
-            st.caption(f"Timestamp: {format_timestamp(float(citation.get('timestamp_start_sec') or 0))}")
-        if source.get("caption"):
-            st.caption(f"Caption: {source.get('caption')}")
-        preview = read_blob(chunk.get("preview_path") or source.get("preview_path"))
-        payload = read_blob(chunk.get("file_path") or source.get("file_path"))
-        video = read_blob(chunk.get("video_path") or source.get("video_path"))
-        if source.get("type") in ("pdf", "image", "video_frame") and preview:
-            st.image(preview, width="stretch")
-        elif source.get("type") == "audio" and payload:
-            st.audio(payload, format=source.get("mime"), start_time=seek)
-        if video:
-            st.video(video, start_time=seek)
+def render_source_inline(res: dict):
+    """Render one cited source's detail inside its expander: the exact page/frame,
+    or a player seeked to the matched timestamp."""
+    rtype = res.get("type")
+    seek = _seek_seconds(res.get("timestamp_start_sec"))
+    meta_bits = []
+    if res.get("page_range"):
+        meta_bits.append(str(res["page_range"]))
+    if res.get("timestamp_start_sec") is not None:
+        meta_bits.append(format_timestamp(float(res.get("timestamp_start_sec") or 0)))
+    if meta_bits:
+        st.caption(" · ".join(meta_bits))
+
+    if rtype in ("pdf", "video_frame") and res.get("preview_bytes"):
+        st.image(res["preview_bytes"], width="stretch")
+    elif rtype == "image" and (res.get("preview_bytes") or res.get("bytes")):
+        st.image(res.get("preview_bytes") or res.get("bytes"), width="stretch")
+    elif rtype == "audio" and res.get("bytes"):
+        st.audio(res["bytes"], format=res.get("mime"), start_time=seek)
+    if rtype == "video_frame" and res.get("video_bytes"):
+        st.video(res["video_bytes"], start_time=seek)
 
 st.markdown("---")
 st.subheader("💬 Chat with your Documents")
@@ -1035,7 +1022,7 @@ if not st.session_state.doc_sources:
         st.rerun()
     wc2.caption("…or add your own files from the sidebar on the left 👈")
 else:
-    top_k = st.slider("Results to retrieve", min_value=1, max_value=5, value=3, key="top_k")
+    top_k = st.session_state.get("top_k", 3)  # set in the sidebar Settings expander
 
     # Starter prompts before the first question, so a new user sees it work fast.
     if not st.session_state.messages:
@@ -1116,23 +1103,14 @@ else:
                     source_labels = [
                         f"[{res['citation_id']}] {res['name']}" for res in selected_results
                     ]
-                    st.caption(f"Based on: {', '.join(source_labels)}")
+                    render_results_gallery(selected_results)
+                    st.caption("Sources — expand to view the cited page, frame, or clip:")
                     for src in selected_results:
-                        source_id = src.get("source_id")
-                        if source_id and st.button(f"Open {src['citation_id']}", key=f"open_{src['citation_id']}"):
-                            st.session_state.selected_citation = {
-                                "source_id": source_id,
-                                "chroma_id": src.get("id"),
-                                "label": src.get("name"),
-                                "page_range": src.get("page_range"),
-                                "timestamp_start_sec": src.get("timestamp_start_sec"),
-                            }
-                            st.rerun()
+                        with st.expander(f"[{src['citation_id']}] {src.get('name', 'source')}", expanded=False):
+                            render_source_inline(src)
                     if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
                         st.session_state.tts_pending = full_text
                         st.rerun()
-                    render_results_gallery(selected_results)
-                    render_source_detail_panel()
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": full_text,

@@ -1023,9 +1023,28 @@ st.markdown("---")
 st.subheader("💬 Chat with your Documents")
 
 if not st.session_state.doc_sources:
-    st.info("Upload at least one file to start chatting.")
+    st.markdown("#### 👋 Welcome to Unified RAG")
+    st.write(
+        "Search across PDFs, images, audio, and video in one place. Ask questions in plain "
+        "language and get answers grounded in your files, with citations."
+    )
+    st.caption("Supported: PDF · PNG/JPG · MP3/WAV · MP4/MOV")
+    wc1, wc2 = st.columns([1, 2])
+    if wc1.button("⚡ Load 6 sample charts", key="welcome_load_samples", use_container_width=True):
+        st.session_state.load_samples_requested = True
+        st.rerun()
+    wc2.caption("…or add your own files from the sidebar on the left 👈")
 else:
     top_k = st.slider("Results to retrieve", min_value=1, max_value=5, value=3, key="top_k")
+
+    # Starter prompts before the first question, so a new user sees it work fast.
+    if not st.session_state.messages:
+        st.caption("Try asking:")
+        starters = ["What are these files about?", "Summarize the key points", "What figures stand out?"]
+        for _col, _prompt in zip(st.columns(len(starters)), starters):
+            if _col.button(_prompt, key=f"starter_{_prompt}", use_container_width=True):
+                st.session_state.pending_query = _prompt
+                st.rerun()
 
     # Render the full chat history
     for msg in st.session_state.messages:
@@ -1042,8 +1061,8 @@ else:
                     st.session_state.tts_pending = msg["content"]
                     st.rerun()
 
-    # Chat input
-    query = st.chat_input("Ask a question about your documents…", key="chat_input")
+    # Chat input — a starter-prompt click feeds in via pending_query
+    query = st.chat_input("Ask a question about your documents…", key="chat_input") or st.session_state.pop("pending_query", None)
 
     if query:
         with st.chat_message("user"):

@@ -32,6 +32,21 @@ def format_token_usage(usage: dict | None) -> str:
     return f"🔢 {usage.get('total', 0):,} tokens ({' · '.join(parts)})"
 
 
+def format_prompt_cost(prompt_total: int, answer_usage: dict | None = None) -> str:
+    """Total token cost for one prompt: routing + retrieval + answer generation.
+
+    Breaks out the answer-generation share when known, so the rest (router, query
+    embedding, HyDE) is visible as overhead.
+    """
+    if not prompt_total:
+        return ""
+    answer_total = (answer_usage or {}).get("total", 0) or 0
+    overhead = prompt_total - answer_total
+    if answer_total and overhead > 0:
+        return f"🔢 {prompt_total:,} tokens this prompt (answer {answer_total:,} · routing & retrieval {overhead:,})"
+    return f"🔢 {prompt_total:,} tokens this prompt"
+
+
 def is_transient_error(error: Exception) -> bool:
     """True for errors worth retrying: rate limits plus transient server faults
     like 503 overload, which Gemini returns under load."""

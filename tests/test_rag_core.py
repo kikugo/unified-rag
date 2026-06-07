@@ -5,6 +5,7 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
+    format_prompt_cost,
     format_token_usage,
     is_rate_limit_error,
     is_transient_error,
@@ -127,6 +128,14 @@ class RagCoreTest(unittest.TestCase):
         self.assertTrue(is_rate_limit_error(Exception("429 RESOURCE_EXHAUSTED")))
         self.assertTrue(is_rate_limit_error(Exception("Quota exceeded for requests")))
         self.assertFalse(is_rate_limit_error(Exception("400 invalid argument")))
+
+    def test_format_prompt_cost(self):
+        self.assertEqual(format_prompt_cost(0), "")
+        self.assertEqual(format_prompt_cost(500), "🔢 500 tokens this prompt")
+        out = format_prompt_cost(1500, {"total": 1234})
+        self.assertIn("1,500 tokens", out)
+        self.assertIn("answer 1,234", out)
+        self.assertIn("266", out)
 
     def test_format_token_usage(self):
         self.assertEqual(format_token_usage(None), "")

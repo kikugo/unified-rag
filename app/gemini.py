@@ -25,6 +25,20 @@ def set_client(client: genai.Client) -> None:
     _client = client
 
 
+def record_usage(usage) -> None:
+    """Add a response's tokens to the per-prompt and session running totals.
+
+    `prompt_tokens` is reset at the start of each query, so it ends up holding the
+    full cost of that query (router + embed + HyDE + answer). `session_tokens`
+    accumulates everything, including ingestion.
+    """
+    total = getattr(usage, "total_token_count", 0) or 0
+    if not total:
+        return
+    st.session_state["prompt_tokens"] = st.session_state.get("prompt_tokens", 0) + total
+    st.session_state["session_tokens"] = st.session_state.get("session_tokens", 0) + total
+
+
 def route_query(question: str) -> str:
     """Classify whether a question is best answered by the local vector store or
     the Google Managed RAG backend, using a fast Gemini Flash call.
@@ -47,6 +61,7 @@ def route_query(question: str) -> str:
             model="gemini-2.5-flash",
             contents=prompt,
         ))
+        record_usage(getattr(resp, "usage_metadata", None))
         answer = resp.text.strip().lower()
         return "managed" if "managed" in answer else "local"
     except Exception:
@@ -62,6 +77,7 @@ def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
                 types.Part(text="Write a concise search caption for this image in one sentence."),
             ],
         )
+        record_usage(getattr(resp, "usage_metadata", None))
         return (resp.text or "").strip()
     except Exception:
         return ""
@@ -90,6 +106,7 @@ def rewrite_search_query(query: str, history: list[dict] | None, max_turns: int 
             model="gemini-2.5-flash",
             contents=prompt,
         ))
+        record_usage(getattr(resp, "usage_metadata", None))
         rewritten = (resp.text or "").strip()
         return rewritten or query
     except Exception:
@@ -116,6 +133,7 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
                 types.Part(text=prompt),
             ],
         ))
+        record_usage(getattr(resp, "usage_metadata", None))
         text = (resp.text or "").strip()
         if not text or text.upper().startswith("NO_SPEECH"):
             return ""
@@ -135,6 +153,7 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
             model="gemini-2.5-flash",
             contents=f"Write a short, factual passage that would answer this question:\n{query}",
         ))
+        record_usage(getattr(draft, "usage_metadata", None))
         hypothetical = (draft.text or "").strip()
     except Exception:
         hypothetical = ""
@@ -149,6 +168,7 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
                 contents=t,
                 config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
             ))
+            record_usage(getattr(result, "usage_metadata", None))
             vectors.append(np.array(result.embeddings[0].values))
         except Exception:
             continue
@@ -187,6 +207,7 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
         ))
+        record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Embedding error: {e}")
@@ -209,6 +230,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
             ),
             config=types.EmbedContentConfig(output_dimensionality=dim),
         ))
+        record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Embedding error: {e}")
@@ -226,6 +248,7 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
         ))
+        record_usage(getattr(result, "usage_metadata", None))
         return [np.array(e.values) for e in result.embeddings]
     except Exception as e:
         st.error(f"PDF embedding error: {e}")
@@ -243,6 +266,7 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
             ],
             config=types.EmbedContentConfig(output_dimensionality=dim),
         ))
+        record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
         st.error(f"Audio embedding error: {e}")

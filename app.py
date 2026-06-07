@@ -20,7 +20,7 @@ from rag_core import (
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
-    format_token_usage,
+    format_prompt_cost,
     is_transient_error,
     pop_source_by_id,
     reciprocal_rank_fusion,
@@ -93,6 +93,10 @@ if "pending_cleanup_paths" not in st.session_state:
     st.session_state.pending_cleanup_paths = []
 if "load_samples_requested" not in st.session_state:
     st.session_state.load_samples_requested = False
+if "session_tokens" not in st.session_state:
+    st.session_state.session_tokens = 0
+if "prompt_tokens" not in st.session_state:
+    st.session_state.prompt_tokens = 0
 
 # Rebuild the sidebar source list from the persisted registry once per session,
 # so a restart or browser refresh doesn't drop everything that's still indexed.
@@ -553,6 +557,7 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
                         output_dimensionality=dim,
                     ),
                 ))
+                gemini.record_usage(getattr(result, "usage_metadata", None))
                 query_emb = np.array(result.embeddings[0].values)
             except Exception as e:
                 st.error(f"Query embedding error: {e}")
@@ -683,13 +688,17 @@ def answer(question: str, selected_results: list[dict],
                 model="gemini-2.5-flash",
                 contents=contents,
             )
+            raw_usage = None
             for chunk in stream:
-                usage = getattr(chunk, "usage_metadata", None)
-                if usage:
-                    st.session_state.last_usage = _usage_dict(usage)
+                u = getattr(chunk, "usage_metadata", None)
+                if u:
+                    raw_usage = u
                 if chunk.text:
                     produced = True
                     yield chunk.text
+            if raw_usage:
+                st.session_state.last_usage = _usage_dict(raw_usage)
+                gemini.record_usage(raw_usage)
             return
         except Exception as e:
             # Retry transient failures, but only if nothing has streamed yet —
@@ -738,7 +747,9 @@ def answer_managed(question: str,
             )
         )))
         if full_chunks:
-            st.session_state.last_usage = _usage_dict(getattr(full_chunks[-1], "usage_metadata", None))
+            _mu = getattr(full_chunks[-1], "usage_metadata", None)
+            st.session_state.last_usage = _usage_dict(_mu)
+            gemini.record_usage(_mu)
         if full_chunks and full_chunks[-1].candidates:
             meta = full_chunks[-1].candidates[0].grounding_metadata
             if meta and hasattr(meta, 'grounding_chunks'):
@@ -1061,8 +1072,8 @@ else:
                 render_results_gallery(msg["results"])
             if msg.get("citations"):
                 st.caption(f"**Sources:** {', '.join(msg['citations'])}")
-            if msg.get("usage"):
-                st.caption(format_token_usage(msg["usage"]))
+            if msg.get("prompt_tokens"):
+                st.caption(format_prompt_cost(msg["prompt_tokens"], msg.get("usage")))
             # Read Aloud button — only for assistant messages
             if msg["role"] == "assistant" and msg.get("content"):
                 msg_idx = st.session_state.messages.index(msg)
@@ -1075,6 +1086,7 @@ else:
 
     if query:
         st.session_state.last_usage = None  # reset; populated by the answer call
+        st.session_state.prompt_tokens = 0  # accumulates this prompt's full token cost
         with st.chat_message("user"):
             st.markdown(query)
         st.session_state.messages.append({"role": "user", "content": query})
@@ -1100,8 +1112,9 @@ else:
                 if citations:
                     st.caption(f"**Sources:** {', '.join(citations)}")
                 usage = st.session_state.get("last_usage")
-                if usage:
-                    st.caption(format_token_usage(usage))
+                prompt_tokens = st.session_state.get("prompt_tokens", 0)
+                if prompt_tokens:
+                    st.caption(format_prompt_cost(prompt_tokens, usage))
                 if st.button("🔊 Read", key="tts_live_managed", help="Read this answer aloud"):
                     st.session_state.tts_pending = full_text
                     st.rerun()
@@ -1111,6 +1124,7 @@ else:
                 "results": [],
                 "citations": citations,
                 "usage": usage,
+                "prompt_tokens": prompt_tokens,
             })
         else:
             # Rewrite contextual follow-ups ("at which timestamp?") into a
@@ -1131,8 +1145,9 @@ else:
                         f"[{res['citation_id']}] {res['name']}" for res in selected_results
                     ]
                     usage = st.session_state.get("last_usage")
-                    if usage:
-                        st.caption(format_token_usage(usage))
+                    prompt_tokens = st.session_state.get("prompt_tokens", 0)
+                    if prompt_tokens:
+                        st.caption(format_prompt_cost(prompt_tokens, usage))
                     render_results_gallery(selected_results)
                     st.caption("Sources — expand to view the cited page, frame, or clip:")
                     for src in selected_results:
@@ -1147,6 +1162,7 @@ else:
                         "results": selected_results,
                         "citations": source_labels,
                         "usage": usage,
+                        "prompt_tokens": prompt_tokens,
                     })
                 else:
                     msg = "No results found — try rephrasing your question."
@@ -1182,6 +1198,7 @@ if run_img_query and query_image_sidebar:
                     output_dimensionality=dim,
                 ),
             ))
+            gemini.record_usage(getattr(result, "usage_metadata", None))
             query_emb = np.array(result.embeddings[0].values)
         except Exception as e:
             st.error(f"Query embedding error: {e}")
@@ -1199,6 +1216,10 @@ if run_img_query and query_image_sidebar:
             "results": img_results,
             "citations": [],
         })
+
+# Running token total for the session — rendered last so it reflects this run's calls.
+st.sidebar.markdown("---")
+st.sidebar.caption(f"🔢 Session usage: {st.session_state.get('session_tokens', 0):,} tokens")
 
 # footer
 st.markdown("---")

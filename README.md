@@ -2,6 +2,8 @@
 
 I built this multimodal RAG app to see how far I could push Google Gemini alongside ChromaDB. It handles text, images, audio, and video directly without relying on heavy OCR pipelines. 
 
+[Live demo](https://unified-rag.streamlit.app/). Uploads are capped there so one visitor cannot exhaust the container; clone the repo to run it without limits.
+
 ## What's inside
 
 - **Gemini Embedding 2**: Maps everything (text, charts, audio clips, video frames) into a single vector space.

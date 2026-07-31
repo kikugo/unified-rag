@@ -26,6 +26,7 @@ from rag_core import (
     reciprocal_rank_fusion,
     select_context_results,
     source_artifacts,
+    within_demo_upload_cap,
 )
 from media_ingest import (
     AUDIO_MAX_SECONDS,
@@ -62,6 +63,14 @@ from app.gemini import (
     transcribe_video_audio,
 )
 
+# Demo deployment settings. Unset (the default) runs with no limits and the
+# full Pro-backed Managed RAG path, same as a local clone.
+DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
+MAX_UPLOADS_PER_SESSION = int(os.getenv("MAX_UPLOADS_PER_SESSION", "5"))
+# gemini-2.5-pro is 1K RPD; gemini-2.5-flash is 10K RPD. A demo in front of
+# strangers stays on Flash so one visitor can't exhaust the daily quota.
+MANAGED_ANSWER_MODEL = "gemini-2.5-flash" if DEMO_MODE else "gemini-2.5-pro"
+
 # page config
 st.set_page_config(page_title="Unified RAG", layout="wide")
 st.title("Unified RAG 🔍")
@@ -97,6 +106,8 @@ if "session_tokens" not in st.session_state:
     st.session_state.session_tokens = 0
 if "prompt_tokens" not in st.session_state:
     st.session_state.prompt_tokens = 0
+if "demo_uploads_this_session" not in st.session_state:
+    st.session_state.demo_uploads_this_session = 0
 
 # Rebuild the sidebar source list from the persisted registry once per session,
 # so a restart or browser refresh doesn't drop everything that's still indexed.
@@ -714,7 +725,7 @@ def answer(question: str, selected_results: list[dict],
 
 def answer_managed(question: str,
                    history: list[dict] | None = None) -> tuple[object, list[str]]:
-    """Stream a grounded answer from Gemini 2.5 Pro using the Google File Search store,
+    """Stream a grounded answer from MANAGED_ANSWER_MODEL using the Google File Search store,
     with optional conversation history for multi-turn context."""
     store = get_or_create_google_store()
     if not store:
@@ -734,7 +745,7 @@ def answer_managed(question: str,
     citations = []
     try:
         full_chunks = call_with_retry(lambda: list(client.models.generate_content_stream(
-            model="gemini-2.5-pro",
+            model=MANAGED_ANSWER_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
                 tools=[
@@ -856,7 +867,18 @@ if uploaded_files:
             skipped += 1
             progress.progress((i + 1) / total, text=f"Skipped {file.name} (already indexed)")
             continue
+        if DEMO_MODE and not within_demo_upload_cap(
+            current=st.session_state.demo_uploads_this_session, limit=MAX_UPLOADS_PER_SESSION
+        ):
+            skipped += 1
+            st.sidebar.warning(
+                f"Demo limit: {MAX_UPLOADS_PER_SESSION} files per session. "
+                "Clone the repo to run it without limits."
+            )
+            progress.progress((i + 1) / total, text=f"Skipped {file.name} (demo limit reached)")
+            continue
         existing_hashes.add(content_hash)
+        st.session_state.demo_uploads_this_session += 1
         file_source_id = str(uuid.uuid4())  # one source row per uploaded file
 
         if retrieval_strategy == "Managed RAG (Google File Search)":

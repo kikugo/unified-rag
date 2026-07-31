@@ -231,3 +231,8 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
             scores[doc_id] = scores.get(doc_id, 0.0) + 1 / (k + rank + 1)
 
     return sorted(scores, key=lambda doc_id: (-scores[doc_id], first_seen[doc_id]))
+
+
+def within_demo_upload_cap(current: int, limit: int) -> bool:
+    """True while another upload is allowed. Demo deployments only."""
+    return current < limit

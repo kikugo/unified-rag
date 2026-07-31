@@ -5,3 +5,4 @@ __pycache__/
 .env
 chroma_db/
 .unified_rag_store/
+.streamlit/secrets.toml

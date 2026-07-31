@@ -14,6 +14,7 @@ from rag_core import (
     pop_source_by_id,
     source_artifacts,
     select_context_results,
+    within_demo_upload_cap,
 )
 
 
@@ -200,6 +201,11 @@ class RagCoreTest(unittest.TestCase):
                 attempts=2,
                 sleep=lambda _: None,
             )
+
+
+    def test_demo_upload_cap_rejects_beyond_limit(self):
+        self.assertTrue(within_demo_upload_cap(current=2, limit=3))
+        self.assertFalse(within_demo_upload_cap(current=3, limit=3))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ from eval_harness import (
     evaluate_queries,
     load_gold_set,
     make_bm25_search_fn,
+    make_dense_search_fn,
+    make_hybrid_search_fn,
     recall_at_k,
 )
 
@@ -61,6 +63,39 @@ class EvalHarnessTest(unittest.TestCase):
         self.assertEqual(report["summary"]["recall@5"], 1.0)
         for row in report["details"]:
             self.assertEqual(row["recall@3"], 1.0, f"regressed on query: {row['query']}")
+
+
+class DenseAndHybridArmsTest(unittest.TestCase):
+    CORPUS = [
+        {"id": "a", "searchable_text": "alpha"},
+        {"id": "b", "searchable_text": "beta"},
+    ]
+    EMBEDDINGS = {
+        "docs": {"a": [1.0, 0.0], "b": [0.0, 1.0]},
+        "queries": {"alpha": [0.9, 0.1], "beta": [0.1, 0.9]},
+    }
+
+    def test_dense_search_fn_ranks_by_cosine_similarity(self):
+        fn = make_dense_search_fn(self.CORPUS, self.EMBEDDINGS)
+        self.assertEqual([r["id"] for r in fn(query="alpha", top_k=2)], ["a", "b"])
+        self.assertEqual([r["id"] for r in fn(query="beta", top_k=2)], ["b", "a"])
+
+    def test_dense_search_fn_respects_top_k(self):
+        fn = make_dense_search_fn(self.CORPUS, self.EMBEDDINGS)
+        self.assertEqual(len(fn(query="alpha", top_k=1)), 1)
+
+    def test_dense_search_fn_raises_on_missing_query_vector(self):
+        fn = make_dense_search_fn(self.CORPUS, self.EMBEDDINGS)
+        # a silent miss would score every document zero and quietly corrupt an
+        # ablation, so this has to be loud
+        with self.assertRaises(KeyError):
+            fn(query="never-embedded", top_k=2)
+
+    def test_hybrid_search_fn_returns_ids_from_both_rankings(self):
+        fn = make_hybrid_search_fn(self.CORPUS, self.EMBEDDINGS)
+        results = fn(query="alpha", top_k=2)
+        self.assertEqual(len(results), 2)
+        self.assertIn("a", [r["id"] for r in results])
 
 
 if __name__ == "__main__":

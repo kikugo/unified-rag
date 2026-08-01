@@ -75,5 +75,45 @@ class AblationTest(unittest.TestCase):
         self.assertLess(self._score("hybrid", "para"), self._score("dense", "para"))
 
 
+class PassageLengthDilutionTest(unittest.TestCase):
+    """Pins the README's headline claim so it stays reproducible.
+
+    v3 and v4 hold the same 151 documents and the same 50 queries. The only
+    difference is how much surrounding text each document carries. Dense
+    retrieval degrades sharply on exact-identifier lookup as passages get longer;
+    BM25 does not move. Two earlier versions of this benchmark missed the effect
+    entirely because their documents were single sentences.
+    """
+
+    def _exact_recall_at_1(self, corpus_file: str, embeddings_file: str, arm: str) -> float:
+        corpus = _load(corpus_file)
+        embeddings = _load(embeddings_file)
+        gold = [
+            c for c in _load("eval_gold_set_v2.json")
+            if all(i.startswith("exact") for i in c["expected_ids"])
+        ]
+        fn = (
+            make_dense_search_fn(corpus, embeddings)
+            if arm == "dense"
+            else make_bm25_search_fn(corpus)
+        )
+        return evaluate_queries(gold, fn, k_values=(1,))["summary"]["recall@1"]
+
+    def test_corpora_differ_only_in_length(self):
+        short = {d["id"] for d in _load("eval_corpus_v3.json")}
+        long_ = {d["id"] for d in _load("eval_corpus_v4.json")}
+        self.assertEqual(short, long_, "the two corpora must hold the same documents")
+
+    def test_dense_degrades_on_longer_passages(self):
+        short = self._exact_recall_at_1("eval_corpus_v3.json", "eval_embeddings_v3.json", "dense")
+        long_ = self._exact_recall_at_1("eval_corpus_v4.json", "eval_embeddings_v4.json", "dense")
+        self.assertGreater(short - long_, 0.3, "the dilution effect the README reports is gone")
+
+    def test_bm25_is_unaffected_by_passage_length(self):
+        short = self._exact_recall_at_1("eval_corpus_v3.json", "eval_embeddings_v3.json", "bm25")
+        long_ = self._exact_recall_at_1("eval_corpus_v4.json", "eval_embeddings_v4.json", "bm25")
+        self.assertEqual(short, long_)
+
+
 if __name__ == "__main__":
     unittest.main()

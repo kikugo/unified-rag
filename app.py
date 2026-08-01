@@ -149,12 +149,48 @@ if st.session_state.tts_pending:
     speak_text(st.session_state.tts_pending)
     st.session_state.tts_pending = None
 
+def resolve_hosted_key() -> str:
+    """Key the deployment supplies so visitors are not met with a key prompt.
+
+    Accepts either name: the secrets template shipped GEMINI_API_KEY while the
+    local .env uses GOOGLE_API_KEY, and neither was ever actually read before,
+    so honouring both avoids a silent empty-key deploy.
+
+    st.secrets raises rather than returning a default when no secrets file
+    exists, which is the normal case for a local checkout, so this has to be
+    guarded rather than written as a .get() with a fallback.
+    """
+    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        try:
+            key = str(st.secrets.get(name, "")).strip()
+            if key:
+                return key
+        except Exception:
+            pass
+        key = os.getenv(name, "").strip()
+        if key:
+            return key
+    return ""
+
+
+HOSTED_KEY = resolve_hosted_key()
+
 # sidebar
 with st.sidebar:
     st.header("🔑 API Key")
-    google_api_key = st.text_input("Google API Key", type="password", key="google_key")
-    "[Get a Google API key](https://aistudio.google.com/app/apikey)"
-    st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
+    _typed_key = st.text_input(
+        "Google API Key",
+        type="password",
+        key="google_key",
+        placeholder="Using the demo key" if HOSTED_KEY else "",
+        help="Optional while the demo key is available. Your own key takes priority.",
+    )
+    google_api_key = (_typed_key or "").strip() or HOSTED_KEY
+    if not _typed_key and HOSTED_KEY:
+        st.caption("✅ Running on a shared demo key, so you can try it without signing up. Paste your own to use it instead.")
+    else:
+        "[Get a Google API key](https://aistudio.google.com/app/apikey)"
+        st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
 
     st.markdown("---")
     # ---------- Add files ----------
@@ -337,7 +373,10 @@ if google_api_key:
     gemini.set_client(client)
     st.sidebar.success("Client ready!")
 else:
-    st.info("Enter your Google API key in the sidebar to get started.")
+    st.info(
+        "Enter your Google API key in the sidebar to get started. "
+        "[Get one free](https://aistudio.google.com/app/apikey) — it takes about a minute."
+    )
     st.stop()
 
 # init chroma client
@@ -833,9 +872,9 @@ if st.session_state.load_samples_requested:
 
 # about expander
 with st.expander("ℹ️ About this app"):
-    st.markdown("""
+    st.markdown(f"""
     **Unified RAG** uses **Gemini Embedding 2** (`gemini-embedding-2-preview`) to embed your content
-    into a single unified vector space, and **Gemini 2.5 Flash** to generate answers from retrieved content.
+    into a single unified vector space, and `{MANAGED_ANSWER_MODEL}` to generate answers from retrieved content.
 
     **Supported content and API limits:**
 
@@ -1247,4 +1286,4 @@ st.sidebar.caption(f"🔢 Session usage: {st.session_state.get('session_tokens',
 
 # footer
 st.markdown("---")
-st.caption("Unified RAG · Powered by Gemini Embedding 2 and Gemini 2.5 Flash")
+st.caption(f"Unified RAG · Powered by Gemini Embedding 2 and {MANAGED_ANSWER_MODEL}")

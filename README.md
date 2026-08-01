@@ -17,6 +17,45 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 2. **Search**: You ask a question. The backend can route to Google File Search, or run hybrid local retrieval: dense Chroma search fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF).
 3. **Answer**: `gemini-2.5-flash` gets the top retrieved chunks (not just the first hit) with source IDs like `[S1]` and `[S2]` so citations actually mean something.
 
+## Does the hybrid retrieval actually help?
+
+I kept claiming it did, so I built a benchmark and measured it. The answer turned out to be "yes, but only for some queries", which is not what I expected.
+
+The set is 151 passages and 50 queries, in `tests/data/`. Queries split three ways: exact-identifier lookups (SKU codes, CVE numbers, version strings), paraphrases that share no vocabulary with the target passage, and neutral queries that should be easy for anything. Every passage runs to about 128 words, because that is roughly what a chunk looks like once a PDF is split, and passage length turned out to matter more than anything else here.
+
+Recall over all 50 queries:
+
+| Retrieval | recall@1 | recall@3 | recall@5 |
+|---|---|---|---|
+| BM25 only | 0.660 | 0.700 | 0.700 |
+| Dense only | 0.720 | 0.960 | 1.000 |
+| Hybrid (RRF) | 0.540 | 0.760 | 0.860 |
+
+On that headline number, dense alone wins and fusing BM25 into it makes things worse. Splitting by query type shows why:
+
+| Query type | BM25 r@1 | Dense r@1 | Hybrid r@1 |
+|---|---|---|---|
+| Exact identifier | 1.000 | 0.471 | 0.647 |
+| Paraphrase | 0.059 | 0.824 | 0.118 |
+| Neutral | 0.938 | 0.875 | 0.875 |
+
+Dense retrieval finds fewer than half of the exact-identifier passages at rank one. BM25 finds all of them. On paraphrases it is the other way round, and not close.
+
+The interesting part is what passage length does to that. Same 151 documents, same queries, same embedding model, with only the amount of surrounding text changed:
+
+| Mean passage length | Dense, exact-identifier r@1 |
+|---|---|
+| 11 words | 0.941 |
+| 128 words | 0.471 |
+
+One embedding vector has to stand in for the whole passage, so a serial number surrounded by three hundred words of context gets averaged away. BM25 scored 1.000 in both cases, because a literal token match does not care how much text is around it. This is the case hybrid retrieval exists for, and it only appears once the documents are realistic. On one-line documents dense looks flawless and the whole argument for BM25 disappears.
+
+So the honest summary: hybrid recovers most of what dense loses on identifier lookups (0.471 to 0.647 at rank one, and 0.882 to 1.000 at rank three), and it costs a lot on paraphrases, where RRF gives an arm that scored 0.059 the same weight as one that scored 0.824. Plain RRF has no idea that one of its inputs is useless for a given query. Whether the trade is worth it depends on the query mix, which for a document search tool leans toward identifier lookups more than this overall average suggests.
+
+The obvious next step is weighting the fusion by query type rather than treating both rankings as equal. This app already routes queries between backends, so routing between retrievers is the same idea one level down.
+
+Reproduce it with `tests/test_ablation.py`. Embeddings are cached in the repo, so it runs offline and without an API key.
+
 ## Features that matter
 
 - **It takes basically anything**: PNGs, JPGs, MP3s, WAVs, MP4s, MOVs, and regular PDFs.

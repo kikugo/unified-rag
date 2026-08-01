@@ -1,0 +1,302 @@
+[
+  {
+    "query": "SKU-4417-B inventory shortfall",
+    "expected_ids": [
+      "exact-sku"
+    ]
+  },
+  {
+    "query": "CVE-2024-31497 remote code execution",
+    "expected_ids": [
+      "exact-cve"
+    ]
+  },
+  {
+    "query": "v2.11.3 release notes crash",
+    "expected_ids": [
+      "exact-version"
+    ]
+  },
+  {
+    "query": "employee ID E-88204 badge access",
+    "expected_ids": [
+      "exact-employee"
+    ]
+  },
+  {
+    "query": "invoice INV-2026-00931 disputed",
+    "expected_ids": [
+      "exact-invoice"
+    ]
+  },
+  {
+    "query": "Atorvastatin 40mg recall labeling",
+    "expected_ids": [
+      "exact-drug"
+    ]
+  },
+  {
+    "query": "RP-7729-X backordered part",
+    "expected_ids": [
+      "exact-part"
+    ]
+  },
+  {
+    "query": "SN-88213X burn-in test failure",
+    "expected_ids": [
+      "exact-serial"
+    ]
+  },
+  {
+    "query": "PO-556213 approved server rack",
+    "expected_ids": [
+      "exact-po"
+    ]
+  },
+  {
+    "query": "GX-9000 turbine vibration tolerance",
+    "expected_ids": [
+      "exact-model"
+    ]
+  },
+  {
+    "query": "ticket TCK-44821 escalated timeouts",
+    "expected_ids": [
+      "exact-ticket"
+    ]
+  },
+  {
+    "query": "contract CN-2025-1180 renewal",
+    "expected_ids": [
+      "exact-contract"
+    ]
+  },
+  {
+    "query": "api.northwind.io certificate expiry",
+    "expected_ids": [
+      "exact-cert"
+    ]
+  },
+  {
+    "query": "Priya Ramanathan compliance audit signoff",
+    "expected_ids": [
+      "exact-name"
+    ]
+  },
+  {
+    "query": "build-8842 failed integration stage",
+    "expected_ids": [
+      "exact-build"
+    ]
+  },
+  {
+    "query": "lot L-99234 resin out of spec",
+    "expected_ids": [
+      "exact-lot"
+    ]
+  },
+  {
+    "query": "asset tag AT-30021 decommissioned",
+    "expected_ids": [
+      "exact-asset"
+    ]
+  },
+  {
+    "query": "an overnight automated accounting task crashed without alerting anybody for half a day",
+    "expected_ids": [
+      "para-reconcile"
+    ]
+  },
+  {
+    "query": "shoppers could not complete purchases because incoming requests were sent to machines with no capacity at the busiest time",
+    "expected_ids": [
+      "para-outage"
+    ]
+  },
+  {
+    "query": "a trio of experienced staff members quit close together, blaming exhaustion and vague advancement rules",
+    "expected_ids": [
+      "para-turnover"
+    ]
+  },
+  {
+    "query": "client contact information was left visible to anyone online by an outside vendor for forty eight hours",
+    "expected_ids": [
+      "para-leak"
+    ]
+  },
+  {
+    "query": "harsh seasonal weather forced builders to extend the crossing project schedule well past its original deadline",
+    "expected_ids": [
+      "para-delay"
+    ]
+  },
+  {
+    "query": "a pair of local supermarket companies joined together once investors gave consent early in spring",
+    "expected_ids": [
+      "para-merger"
+    ]
+  },
+  {
+    "query": "shoppers that bought the defective kitchen appliance got reimbursed with no need to submit any paperwork",
+    "expected_ids": [
+      "para-refund"
+    ]
+  },
+  {
+    "query": "management intends to add many more fulfillment center employees ahead of the busy holiday sales period",
+    "expected_ids": [
+      "para-hiring"
+    ]
+  },
+  {
+    "query": "growers working the lowlands saw output plunge after the least precipitation seen since records began",
+    "expected_ids": [
+      "para-drought"
+    ]
+  },
+  {
+    "query": "makers of a children's construction set withdrew it once swallowing dangers came to light",
+    "expected_ids": [
+      "para-recall2"
+    ]
+  },
+  {
+    "query": "port laborers stopped working for seven days, bringing cargo movement to a standstill up and down the shoreline",
+    "expected_ids": [
+      "para-strike"
+    ]
+  },
+  {
+    "query": "local government reduced funding for green spaces to make up for a gap in street maintenance money",
+    "expected_ids": [
+      "para-budget"
+    ]
+  },
+  {
+    "query": "a company review revealed that a staff member had been diverting supplier funds into their own finances",
+    "expected_ids": [
+      "para-fraud"
+    ]
+  },
+  {
+    "query": "officials broadened the vaccination site's opening times once interest exceeded the original booking capacity",
+    "expected_ids": [
+      "para-vaccine"
+    ]
+  },
+  {
+    "query": "emergency crews stopped the flames spreading along the hillside following seventy two hours of helicopter drenching",
+    "expected_ids": [
+      "para-wildfire"
+    ]
+  },
+  {
+    "query": "a onetime staff member filed legal action claiming her job ended after flagging hazardous conditions",
+    "expected_ids": [
+      "para-lawsuit"
+    ]
+  },
+  {
+    "query": "a flight operator struck a ticketing collaboration deal with a smaller nearby company to grow routes across the central states",
+    "expected_ids": [
+      "para-partnership"
+    ]
+  },
+  {
+    "query": "cloud services revenue quarterly earnings call",
+    "expected_ids": [
+      "both-earnings"
+    ]
+  },
+  {
+    "query": "social media campaign targeting college students",
+    "expected_ids": [
+      "both-campaign"
+    ]
+  },
+  {
+    "query": "database cluster upgrade query response times",
+    "expected_ids": [
+      "both-database"
+    ]
+  },
+  {
+    "query": "board approved stock buyback program",
+    "expected_ids": [
+      "both-buyback"
+    ]
+  },
+  {
+    "query": "customer support wait times chatbot",
+    "expected_ids": [
+      "both-chatbot"
+    ]
+  },
+  {
+    "query": "factory solar panels electricity costs",
+    "expected_ids": [
+      "both-solar"
+    ]
+  },
+  {
+    "query": "study sleep quality memory retention",
+    "expected_ids": [
+      "both-sleep"
+    ]
+  },
+  {
+    "query": "new public library branch downtown",
+    "expected_ids": [
+      "both-library"
+    ]
+  },
+  {
+    "query": "airline direct flights Chicago Lisbon",
+    "expected_ids": [
+      "both-flights"
+    ]
+  },
+  {
+    "query": "restaurant chain plant based burger menu",
+    "expected_ids": [
+      "both-burger"
+    ]
+  },
+  {
+    "query": "startup Series A funding round twelve million",
+    "expected_ids": [
+      "both-funding"
+    ]
+  },
+  {
+    "query": "schools new reading curriculum third graders",
+    "expected_ids": [
+      "both-curriculum"
+    ]
+  },
+  {
+    "query": "stadium renovation additional seats",
+    "expected_ids": [
+      "both-stadium"
+    ]
+  },
+  {
+    "query": "bank savings account interest rate deposits",
+    "expected_ids": [
+      "both-savings"
+    ]
+  },
+  {
+    "query": "film studio delayed summer blockbuster release",
+    "expected_ids": [
+      "both-film"
+    ]
+  },
+  {
+    "query": "hospital emergency room expansion patient wait times",
+    "expected_ids": [
+      "both-hospital"
+    ]
+  }
+]

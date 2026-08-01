@@ -2,12 +2,14 @@
 
 I built this multimodal RAG app to see how far I could push Google Gemini alongside ChromaDB. It handles text, images, audio, and video directly without relying on heavy OCR pipelines. 
 
-[Live demo](https://unified-rag.streamlit.app/). Uploads are capped there so one visitor cannot exhaust the container; clone the repo to run it without limits.
+[Live demo](https://unified-rag.streamlit.app/) — no signup, no API key. Hit **Load 6 sample charts** in the sidebar and ask it something. Uploads are capped there so one visitor cannot exhaust the container; clone the repo to run it without limits.
+
+The demo runs on a key the deployment supplies (`GOOGLE_API_KEY` in Streamlit secrets, see `.streamlit/secrets.toml.example`). Paste your own key in the sidebar and it takes priority. With no key configured anywhere, the app falls back to asking each visitor for one, which is how it behaves on a fresh clone.
 
 ## What's inside
 
 - **Gemini Embedding 2**: Maps everything (text, charts, audio clips, video frames) into a single vector space.
-- **Gemini 2.5 Flash / Pro**: Reads the retrieved chunks and generates the final answer.
+- **Gemini 3.6 Flash**: Reads the retrieved chunks and generates the final answer, dropping to `gemini-3.5-flash-lite` when `DEMO_MODE` is on. The whole app was on the 2.5 line until 2026-08-01, when that generation started returning 404 to newly issued API keys — model ids now live in one place (`app/gemini.py`) so the next retirement is a one-line fix.
 - **ChromaDB**: Local vector storage. It's fast enough for what I need and doesn't require setting up cloud infrastructure just to test an idea.
 - **Google File Search (Managed RAG)**: I added this to bypass local limits when dealing with massive document dumps. It offloads the hassle of ingestion squarely to Google Cloud.
 
@@ -15,7 +17,7 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 
 1. **Upload**: You drop files in. The app either embeds them locally into Chroma (using `gemini-embedding-2-preview`) or pushes them straight to an ephemeral Google File Search store. Local uploads go through hashed file storage under `.unified_rag_store/` instead of stuffing raw bytes into Chroma metadata when possible.
 2. **Search**: You ask a question. The backend can route to Google File Search, or run hybrid local retrieval: dense Chroma search fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF).
-3. **Answer**: `gemini-2.5-flash` gets the top retrieved chunks (not just the first hit) with source IDs like `[S1]` and `[S2]` so citations actually mean something.
+3. **Answer**: the answer model gets the top retrieved chunks (not just the first hit) with source IDs like `[S1]` and `[S2]` so citations actually mean something.
 
 ## Does the hybrid retrieval actually help?
 

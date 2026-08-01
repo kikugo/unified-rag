@@ -67,9 +67,11 @@ from app.gemini import (
 # full Pro-backed Managed RAG path, same as a local clone.
 DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
 MAX_UPLOADS_PER_SESSION = int(os.getenv("MAX_UPLOADS_PER_SESSION", "5"))
-# gemini-2.5-pro is 1K RPD; gemini-2.5-flash is 10K RPD. A demo in front of
-# strangers stays on Flash so one visitor can't exhaust the daily quota.
-MANAGED_ANSWER_MODEL = "gemini-2.5-flash" if DEMO_MODE else "gemini-2.5-pro"
+# A demo in front of strangers stays on the cheaper model so one visitor cannot
+# exhaust the daily quota. Both were on the 2.5 line until 2026-08-01, when that
+# generation started returning 404 to newly issued API keys; 2.5 Pro was also
+# only 1K requests a day against 3.6 Flash's 10K.
+MANAGED_ANSWER_MODEL = "gemini-3.5-flash-lite" if DEMO_MODE else "gemini-3.6-flash"
 
 # page config
 st.set_page_config(page_title="Unified RAG", layout="wide")
@@ -696,7 +698,7 @@ def answer(question: str, selected_results: list[dict],
         produced = False
         try:
             stream = client.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model=MANAGED_ANSWER_MODEL,
                 contents=contents,
             )
             raw_usage = None

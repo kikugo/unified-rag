@@ -19,6 +19,13 @@ from media_ingest import chunk_audio_bytes, decode_audio_to_wav, resize_image_if
 _client: genai.Client | None = None
 
 
+# Model ids in one place. gemini-2.5-flash is already returning 404 "no longer
+# available to new users" on recently issued API keys, and it was hardcoded in
+# five call sites here, so a key rotation would have broken all of them at once.
+UTILITY_MODEL = "gemini-3.5-flash-lite"   # routing, rewriting, captions, transcription
+EMBEDDING_MODEL = "gemini-embedding-2-preview"
+
+
 def set_client(client: genai.Client) -> None:
     """Register the active Gemini client for this session."""
     global _client
@@ -58,12 +65,16 @@ def route_query(question: str) -> str:
     )
     try:
         resp = call_with_retry(lambda: _client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=UTILITY_MODEL,
             contents=prompt,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
-        answer = resp.text.strip().lower()
-        return "managed" if "managed" in answer else "local"
+        # `resp.text` is None when a response is blocked or empty; the other
+        # helpers in this file already guard it, this one did not.
+        answer = (resp.text or "").strip().lower()
+        # Match the whole reply rather than searching for a substring: "not
+        # managed" contains "managed" and used to route the wrong way.
+        return "managed" if answer.startswith("managed") else "local"
     except Exception:
         return "local"  # safe fallback
 
@@ -71,7 +82,7 @@ def route_query(question: str) -> str:
 def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
     try:
         resp = _client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=UTILITY_MODEL,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 types.Part(text="Write a concise search caption for this image in one sentence."),
@@ -103,7 +114,7 @@ def rewrite_search_query(query: str, history: list[dict] | None, max_turns: int 
     )
     try:
         resp = call_with_retry(lambda: _client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=UTILITY_MODEL,
             contents=prompt,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
@@ -127,7 +138,7 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
     )
     try:
         resp = call_with_retry(lambda: _client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=UTILITY_MODEL,
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
                 types.Part(text=prompt),
@@ -150,7 +161,7 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
     """
     try:
         draft = call_with_retry(lambda: _client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=UTILITY_MODEL,
             contents=f"Write a short, factual passage that would answer this question:\n{query}",
         ))
         record_usage(getattr(draft, "usage_metadata", None))
@@ -164,7 +175,7 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
             continue
         try:
             result = call_with_retry(lambda t=text: _client.models.embed_content(
-                model="gemini-embedding-2-preview",
+                model=EMBEDDING_MODEL,
                 contents=t,
                 config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
             ))
@@ -201,7 +212,7 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = call_with_retry(lambda: _client.models.embed_content(
-            model="gemini-embedding-2-preview",
+            model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             ],
@@ -221,7 +232,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = call_with_retry(lambda: _client.models.embed_content(
-            model="gemini-embedding-2-preview",
+            model=EMBEDDING_MODEL,
             contents=types.Content(
                 parts=[
                     types.Part(text=caption),
@@ -242,7 +253,7 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = call_with_retry(lambda: _client.models.embed_content(
-            model="gemini-embedding-2-preview",
+            model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
             ],
@@ -260,7 +271,7 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     dim = st.session_state.get("embedding_dim", 3072)
     try:
         result = call_with_retry(lambda: _client.models.embed_content(
-            model="gemini-embedding-2-preview",
+            model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
             ],

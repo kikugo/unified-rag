@@ -89,6 +89,23 @@ For heavy usage, you can connect it to a hosted Chroma Cloud instance by droppin
 
 There are tests under `tests/` if you want to sanity-check helpers (`python3 -m unittest discover -s tests`). PDF tests skip automatically when PyMuPDF isn't installed.
 
+## Retrieval from the command line
+
+Retrieval and answering live in `rag/pipeline.py` now, behind one `Config` (mode `dense`, `bm25` or `hybrid_rrf`, plus `rerank`, `hyde`, `top_k`, `context_k`). The Streamlit app and the CLI both call it, so anything I measure from the terminal is the code the app runs.
+
+The benchmark corpus is fixed: the EU AI Act as published in the Official Journal, plus a set of Wikipedia articles pinned by revision id, all listed in `corpus/manifest.json`. The extracted text is committed under `corpus/docs/`, so chunk boundaries can't drift when Wikipedia re-renders an old revision. Figures are indexed as image + caption chunks; the images themselves are downloaded, not committed.
+
+```bash
+uv pip install -r requirements.txt
+uv run python -m rag.corpus fetch            # download raw sources and figures (text is already committed)
+uv run python -m rag.index build             # embed into .eval_index/, asks before spending API calls
+uv run python -m rag.cli "Which AI practices does Article 5 prohibit?" --mode hybrid_rrf --rerank
+```
+
+The CLI prints each hit's chunk id with its dense, BM25, RRF and rerank scores. Add `--answer` for a cited answer, or `--hyde` to embed a drafted answer alongside the question. Reranking is a local cross-encoder (`ms-marco-MiniLM-L-6-v2` through fastembed's ONNX runtime), so it needs no API key.
+
+Chunk ids are a hash of document id, page (or section), character offset and kind, so rebuilding the index from the same text gives the same ids. Embeddings are cached in `.cache/`, which makes a rebuild free. `uv run python -m rag.index verify-stable` checks both: it deletes the index, rebuilds it and confirms every ranking comes back identical.
+
 ## Notes to self: what's left
 
 My professor reviewed the codebase a while back and pointed out a pile of real embarrassments. Most of that list is gone now. Retrieval is hybrid BM25+RRF with top-K context. Audio and video get transcribed. MP3 decodes properly, re-uploads dedupe by content hash, each file is one source row, citations seek to the right spot, and the corpus survives a restart. There's even a recall@k test on a seeded corpus so I can tell when I break something.

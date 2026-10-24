@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": ["Bash(uv run pytest *)", "Bash(uv run ruff *)"],
+    "ask": ["Bash(terraform apply *)", "Bash(terraform destroy *)", "Bash(az * create *)", "Bash(modal deploy *)", "Bash(helm upgrade *)", "Bash(kubectl delete *)", "Bash(git push *)"],
+    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./.streamlit/secrets.toml)"]
+  }
+}

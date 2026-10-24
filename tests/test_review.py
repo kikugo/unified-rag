@@ -139,6 +139,27 @@ class OfflineReviewTest(_ReviewBase):
         self._suggest([_cand("c001")], ["e", "", "", ""], sugs).run()
         self.assertEqual(load_golden(self.golden)[0]["question"], "Suggested wording?")
 
+    def test_second_opinion_disagreement_is_shown_and_can_be_accepted(self):
+        sugs = {
+            "c001": {"decision": "keep", "reviewer": "haiku",
+                     "second": {"decision": "edit", "question": "Sonnet wording?", "reviewer": "sonnet"}},
+            "c002": {"decision": "keep", "reviewer": "haiku",
+                     "second": {"decision": "drop", "reviewer": "sonnet", "note": "unsupported"}},
+            "c003": {"decision": "keep", "reviewer": "haiku", "second": {"decision": "keep", "reviewer": "sonnet"}},
+        }
+        self._suggest([_cand("c001"), _cand("c002"), _cand("c003")], ["b", "b", "a"], sugs).run()
+        self.assertEqual([r["question"] for r in load_golden(self.golden)], ["Sonnet wording?", "Question c003?"])
+        log = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual([(e["decision"], e["accepted"], e["accepted_second"]) for e in log],
+                         [("edit", False, True), ("drop", False, True), ("keep", True, False)])
+        disagreements = [line for line in self.out if "DISAGREES" in line]
+        self.assertEqual(len(disagreements), 2, "only the two differing opinions are marked")
+
+    def test_b_without_a_second_opinion_is_not_a_choice(self):
+        sugs = {"c001": {"decision": "keep", "reviewer": "haiku"}}
+        self._suggest([_cand("c001")], ["b", "a"], sugs).run()
+        self.assertEqual(len(load_golden(self.golden)), 1)
+
     def test_accept_without_a_suggestion_is_not_a_choice(self):
         self._reviewer([_cand("c001")], ["a", "k"]).run()
         self.assertEqual(len(load_golden(self.golden)), 1)

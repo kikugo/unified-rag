@@ -7,6 +7,8 @@ k keep · e edit then keep · d drop · s skip for now · q quit.
 
 With --suggestions, each candidate also shows an LLM reviewer's proposed
 decision (keep, edit with new wording, or drop) and its reason; a accepts it.
+A suggestion row may carry a "second" opinion from another reviewer, shown
+underneath and marked when it disagrees; b accepts that one instead.
 You stay the reviewer: nothing reaches golden.jsonl without a keypress, and the
 log records whether you accepted the suggestion or decided yourself.
 
@@ -117,16 +119,24 @@ class Reviewer:
                 self.say(f"  {DIM}{hit['chunk_id']} · {hit['doc_id']} / {hit['page']}{RESET}  {hit['text'][:300]}")
         sug = self.suggestions.get(cand["candidate_id"])
         if sug:
-            self.say(f"\n{BOLD}Suggested: {sug['decision'].upper()}{RESET} {DIM}({sug.get('reviewer', '')}){RESET}"
-                     f"  {sug.get('note', '')}")
-            for field in ("question", "answer", "type"):
-                if sug.get(field) and sug[field] != cand[field]:
-                    self.say(f"  {BOLD}{field} →{RESET} {sug[field]}")
+            self._show_opinion("Suggested", sug, cand)
+            second = sug.get("second")
+            if second:
+                agree = second["decision"] == sug["decision"] and self._suggested(cand, second) == self._suggested(cand)
+                label = "Second opinion" + ("" if agree else f" {RED}DISAGREES{RESET}{BOLD}")
+                self._show_opinion(label, second, cand)
 
-    def _suggested(self, cand: dict[str, Any]) -> dict[str, Any]:
-        """The candidate with any suggested edits applied."""
+    def _show_opinion(self, label: str, opinion: dict[str, Any], cand: dict[str, Any]) -> None:
+        self.say(f"\n{BOLD}{label}: {opinion['decision'].upper()}{RESET} {DIM}({opinion.get('reviewer', '')}){RESET}"
+                 f"  {opinion.get('note', '')}")
+        for field in ("question", "answer", "type"):
+            if opinion.get(field) and opinion[field] != cand[field]:
+                self.say(f"  {BOLD}{field} →{RESET} {opinion[field]}")
+
+    def _suggested(self, cand: dict[str, Any], opinion: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The candidate with an opinion's edits applied (the primary suggestion by default)."""
         final = dict(cand)
-        sug = self.suggestions.get(cand["candidate_id"]) or {}
+        sug = opinion if opinion is not None else (self.suggestions.get(cand["candidate_id"]) or {})
         if sug.get("decision") == "edit":
             for field in ("question", "answer", "type"):
                 if sug.get(field):
@@ -175,7 +185,9 @@ class Reviewer:
             self.say(self._header(golden, len(self.pending())))
             self._show(cand)
             sug = self.suggestions.get(cand["candidate_id"])
-            prompt = "\n" + ("[a]ccept suggestion " if sug else "") + "[k]eep [e]dit [d]rop [s]kip [q]uit > "
+            second = (sug or {}).get("second")
+            prompt = "\n" + ("[a]ccept suggestion " if sug else "") + ("[b] accept second " if second else "") \
+                + "[k]eep [e]dit [d]rop [s]kip [q]uit > "
             while True:
                 choice = self.ask(prompt).strip().lower()
                 if choice == "q":
@@ -186,17 +198,20 @@ class Reviewer:
                 entry = {"candidate_id": cand["candidate_id"], "reviewer": "human"}
                 if sug:
                     entry.update(suggestion=sug["decision"], accepted=choice == "a")
-                if choice == "a" and sug:
-                    if sug["decision"] == "drop":
+                if second:
+                    entry.update(second_opinion=second["decision"], accepted_second=choice == "b")
+                picked = sug if choice == "a" else second if choice == "b" else None
+                if picked:
+                    if picked["decision"] == "drop":
                         choice = "d"
                     else:
-                        final, decision = self._suggested(cand), sug["decision"]
+                        final, decision = self._suggested(cand, picked), picked["decision"]
                 elif choice == "k":
                     final, decision = cand, "keep"
                 elif choice == "e":
                     final, decision = self._edit(cand), "edit"
                 elif choice != "d":
-                    self.say("type " + ("a, " if sug else "") + "k, e, d, s or q")
+                    self.say("type " + ("a, " if sug else "") + ("b, " if second else "") + "k, e, d, s or q")
                     continue
                 if choice == "d":
                     append_jsonl(self.log_path, {**entry, "decision": "drop"})

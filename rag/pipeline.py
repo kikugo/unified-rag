@@ -1,0 +1,274 @@
+"""Retrieval and answering behind one Config, callable without Streamlit.
+
+The app, `python -m rag.cli` and the eval runner all go through `retrieve`, so
+an ablation row measures the code the app ships, not a copy of it.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Protocol
+
+import numpy as np
+from google.genai import types
+
+from rag_core import (
+    bm25_rank,
+    build_local_answer_prompt,
+    call_with_retry,
+    reciprocal_rank_fusion_scores,
+    select_context_results,
+)
+
+MODES = ("dense", "bm25", "hybrid_rrf")
+MAX_HISTORY = 6  # last 3 exchanges
+HYDE_PROMPT = "Write a short, factual passage that would answer this question:\n{question}"
+
+
+@dataclass(frozen=True)
+class Config:
+    mode: str = "hybrid_rrf"
+    rerank: bool = False
+    hyde: bool = False
+    top_k: int = 5
+    context_k: int = 3
+    candidate_k: int = 20  # per-arm pool fused by RRF, and the pool the reranker sees
+    rrf_k: int = 60
+
+    def __post_init__(self):
+        if self.mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}, got {self.mode!r}")
+        if self.top_k < 1:
+            raise ValueError("top_k must be at least 1")
+        if not 1 <= self.context_k <= self.top_k:
+            raise ValueError("context_k must be between 1 and top_k")
+
+
+@dataclass
+class Hit:
+    chunk_id: str
+    score: float  # score of the stage that set the final order
+    metadata: dict[str, Any] = field(default_factory=dict)
+    dense_score: float | None = None  # cosine similarity
+    bm25_score: float | None = None
+    rrf_score: float | None = None
+    rerank_score: float | None = None
+
+
+class Embedder(Protocol):
+    def embed_query(self, text: str) -> np.ndarray: ...
+    def hyde_query(self, text: str) -> np.ndarray: ...
+
+
+class Reranker(Protocol):
+    def score(self, query: str, texts: list[str]) -> list[float]: ...
+
+
+class ChromaStore:
+    """A Chroma collection, optionally filtered by a `where` clause.
+
+    The BM25 side scans every chunk's `searchable_text`, so the full listing is
+    fetched once per store and reused. The app builds a fresh store per search
+    because its corpus changes between queries; the CLI keeps one.
+    """
+
+    def __init__(self, collection, where: dict | None = None):
+        self.collection = collection
+        self.where = where
+        self._metas: dict[str, dict[str, Any]] | None = None
+
+    def _corpus(self) -> dict[str, dict[str, Any]]:
+        if self._metas is None:
+            got = self.collection.get(where=self.where, include=["metadatas"])
+            self._metas = {i: (m or {}) for i, m in zip(got.get("ids") or [], got.get("metadatas") or [])}
+        return self._metas
+
+    def count(self) -> int:
+        return len(self._corpus())
+
+    def metadata(self, chunk_id: str) -> dict[str, Any]:
+        return self._corpus().get(chunk_id, {})
+
+    def text(self, chunk_id: str) -> str:
+        meta = self.metadata(chunk_id)
+        return meta.get("searchable_text", meta.get("name", ""))
+
+    def sparse_docs(self) -> list[dict[str, Any]]:
+        return [{"id": i, "searchable_text": self.text(i)} for i in self._corpus()]
+
+    def dense(self, vector: np.ndarray, n: int) -> list[tuple[str, float]]:
+        n = min(n, self.count())
+        if n <= 0:
+            return []
+        res = self.collection.query(
+            query_embeddings=[np.asarray(vector).tolist()],
+            n_results=n,
+            where=self.where,
+            include=["distances"],
+        )
+        ids = res["ids"][0] if res.get("ids") else []
+        dists = res["distances"][0] if res.get("distances") else [0.0] * len(ids)
+        # Chroma returns cosine distance; similarity is 1 - distance.
+        return [(i, 1.0 - d) for i, d in zip(ids, dists)]
+
+
+def hyde_vector(
+    question: str,
+    draft_fn: Callable[[str], str],
+    embed_fn: Callable[[str], np.ndarray],
+) -> np.ndarray | None:
+    """HyDE: average the query vector with the vector of a drafted answer.
+
+    Falls back to the query vector alone when the draft or its embedding fails,
+    and returns None only when nothing could be embedded.
+    """
+    try:
+        hypothetical = (draft_fn(question) or "").strip()
+    except Exception:
+        hypothetical = ""
+    vectors = []
+    for text in (question, hypothetical):
+        if not text:
+            continue
+        try:
+            vectors.append(np.asarray(embed_fn(text), dtype=float))
+        except Exception:
+            continue
+    if not vectors:
+        return None
+    return np.mean(vectors, axis=0)
+
+
+def retrieve(
+    question: str | None,
+    cfg: Config,
+    store: ChromaStore,
+    embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
+    query_emb: np.ndarray | None = None,
+) -> list[Hit]:
+    """Top `cfg.top_k` chunks for a question under one config.
+
+    `query_emb` skips query embedding (the app's image search passes one). With
+    no question text the BM25 arm has nothing to match, so hybrid falls back to
+    the dense order, which is what the app always did for image queries.
+    """
+    if store.count() == 0:
+        return []
+    pool = max(cfg.candidate_k, cfg.top_k)
+
+    dense: list[tuple[str, float]] = []
+    if cfg.mode in ("dense", "hybrid_rrf"):
+        vector = query_emb
+        if vector is None:
+            if embedder is None or not question:
+                raise ValueError("dense retrieval needs an embedder and a question, or query_emb")
+            vector = embedder.hyde_query(question) if cfg.hyde else embedder.embed_query(question)
+        dense = store.dense(vector, pool)
+
+    sparse: list[tuple[str, float]] = []
+    if cfg.mode in ("bm25", "hybrid_rrf") and question:
+        sparse = bm25_rank(question, store.sparse_docs())[:pool]
+
+    dense_by_id = dict(dense)
+    sparse_by_id = dict(sparse)
+    if cfg.mode == "dense":
+        ranked = dense
+    elif cfg.mode == "bm25":
+        ranked = sparse
+    else:
+        ranked = reciprocal_rank_fusion_scores([[i for i, _ in dense], [i for i, _ in sparse]], k=cfg.rrf_k)[:pool]
+
+    hits = [
+        Hit(
+            chunk_id=chunk_id,
+            score=score,
+            metadata=store.metadata(chunk_id),
+            dense_score=dense_by_id.get(chunk_id),
+            bm25_score=sparse_by_id.get(chunk_id),
+            rrf_score=score if cfg.mode == "hybrid_rrf" else None,
+        )
+        for chunk_id, score in ranked
+    ]
+
+    if cfg.rerank and hits and question:
+        if reranker is None:
+            raise ValueError("cfg.rerank is set but no reranker was given")
+        candidates = hits[:cfg.candidate_k]
+        scores = reranker.score(question, [store.text(h.chunk_id) for h in candidates])
+        for hit, s in zip(candidates, scores):
+            hit.rerank_score = float(s)
+            hit.score = float(s)
+        # sorted() is stable, so equal rerank scores keep the first-stage order.
+        hits = sorted(candidates, key=lambda h: -h.score)
+
+    return hits[:cfg.top_k]
+
+
+def build_answer_contents(
+    question: str,
+    selected_results: list[dict[str, Any]],
+    history: list[dict[str, Any]] | None = None,
+) -> list[types.Content]:
+    """Prior turns, then each cited source, then the grounded prompt.
+
+    A source is sent as its bytes when it has them (the app's PDFs, images,
+    frames) and as text otherwise (benchmark text chunks).
+    """
+    contents: list[types.Content] = []
+    for msg in (history or [])[-MAX_HISTORY:]:
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+    parts = []
+    for result in selected_results:
+        parts.append(types.Part(text=f"Source [{result['citation_id']}] content follows."))
+        if result.get("bytes"):
+            parts.append(types.Part.from_bytes(
+                data=result["bytes"],
+                mime_type=result.get("mime", "application/octet-stream"),
+            ))
+        elif result.get("text"):
+            parts.append(types.Part(text=result["text"]))
+    parts.append(types.Part(text=build_local_answer_prompt(question, selected_results)))
+    contents.append(types.Content(role="user", parts=parts))
+    return contents
+
+
+def hits_to_results(hits: list[Hit], load_bytes: Callable[[dict[str, Any]], tuple[bytes, str] | None] | None = None
+                    ) -> list[dict[str, Any]]:
+    """Hits as the result dicts the prompt builder and the app expect."""
+    results = []
+    for hit in hits:
+        meta = hit.metadata
+        row = {
+            "id": hit.chunk_id,
+            "name": meta.get("name") or meta.get("title", "Unknown source"),
+            "type": meta.get("type") or meta.get("kind", "text"),
+            "score": hit.score,
+            "text": meta.get("text") or meta.get("searchable_text", ""),
+            "page": meta.get("page"),
+        }
+        if load_bytes:
+            loaded = load_bytes(meta)
+            if loaded:
+                row["bytes"], row["mime"] = loaded
+        results.append(row)
+    return results
+
+
+def answer(
+    question: str,
+    hits: list[Hit],
+    cfg: Config,
+    client,
+    model: str,
+    load_bytes: Callable[[dict[str, Any]], tuple[bytes, str] | None] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Non-streaming grounded answer over the top `cfg.context_k` hits."""
+    selected = select_context_results(hits_to_results(hits, load_bytes), max_results=cfg.context_k)
+    contents = build_answer_contents(question, selected)
+    resp = call_with_retry(lambda: client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=types.GenerateContentConfig(temperature=0),
+    ))
+    return (resp.text or "").strip(), selected

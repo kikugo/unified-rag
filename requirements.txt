@@ -11,3 +11,7 @@ opentelemetry-proto>=1.42.0
 opentelemetry-exporter-otlp-proto-grpc>=1.42.0
 av>=11.0.0
 pandas>=2.0.0
+# Benchmark corpus, retrieval CLI and reranker (rag/)
+beautifulsoup4>=4.12.0
+python-dotenv>=1.0.0
+fastembed>=0.9.0

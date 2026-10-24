@@ -160,6 +160,20 @@ class OfflineReviewTest(_ReviewBase):
         self._suggest([_cand("c001")], ["b", "a"], sugs).run()
         self.assertEqual(len(load_golden(self.golden)), 1)
 
+    def test_g_adds_confirmed_alternates_as_extra_gold(self):
+        cand = {**_cand("c001"), "alt_gold_candidates": ["b1", "zz"]}
+        self._reviewer([cand], ["g", "1", "k"]).run()
+        row = load_golden(self.golden)[0]
+        self.assertEqual(row["gold_chunk_ids"], ["a1", "b1"])
+        log = json.loads(self.log.read_text().splitlines()[0])
+        self.assertEqual(log["added_gold"], ["b1"])
+        self.assertTrue(any("Also possibly answered by" in line for line in self.out))
+
+    def test_alternates_are_ignored_unless_added(self):
+        cand = {**_cand("c001"), "alt_gold_candidates": ["b1"]}
+        self._reviewer([cand], ["k"]).run()
+        self.assertEqual(load_golden(self.golden)[0]["gold_chunk_ids"], ["a1"])
+
     def test_accept_without_a_suggestion_is_not_a_choice(self):
         self._reviewer([_cand("c001")], ["a", "k"]).run()
         self.assertEqual(len(load_golden(self.golden)), 1)

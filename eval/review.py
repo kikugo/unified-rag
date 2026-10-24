@@ -9,6 +9,10 @@ With --suggestions, each candidate also shows an LLM reviewer's proposed
 decision (keep, edit with new wording, or drop) and its reason; a accepts it.
 A suggestion row may carry a "second" opinion from another reviewer, shown
 underneath and marked when it disagrees; b accepts that one instead.
+
+When another chunk restates the evidence (a recital and its article, say), it
+is listed under "Also possibly answered by"; g adds the ones you confirm as
+extra gold chunks before you keep the row.
 You stay the reviewer: nothing reaches golden.jsonl without a keypress, and the
 log records whether you accepted the suggestion or decided yourself.
 
@@ -29,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from eval.draft_questions import CANDIDATES_PATH, read_candidates
+from eval.draft_questions import CANDIDATES_PATH, read_candidates, shingles
 from eval.golden import EVAL_DIR, GOLDEN_PATH, TARGET_MIX, TYPES, GoldenSetError, load_golden, mix, validate_row
 from rag.cache import DiskCache
 from rag.gemini_client import GeminiEmbedder
@@ -57,6 +61,21 @@ def read_log(path: Path) -> list[dict[str, Any]]:
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def matching_passage(text: str, quotes: list[str], width: int = 360) -> str:
+    """The stretch of `text` that shares the most wording with any quote."""
+    words = text.split()
+    best, best_at = 0, 0
+    targets = set().union(*(shingles(q) for q in quotes)) if quotes else set()
+    for i in range(len(words)):
+        window = " ".join(words[i:i + 5]).lower()
+        if shingles(window) & targets:
+            best_at = i
+            best = 1
+            break
+    start = len(" ".join(words[:max(0, best_at - 8)])) if best else 0
+    return ("…" if start else "") + text[start:start + width] + ("…" if start + width < len(text) else "")
 
 
 def next_golden_id(rows: list[dict[str, Any]]) -> str:
@@ -117,6 +136,14 @@ class Reviewer:
             self.say(f"\n{BOLD}What the system retrieves (check none of these answers it):{RESET}")
             for hit in self.preview_fn(cand["question"]):
                 self.say(f"  {DIM}{hit['chunk_id']} · {hit['doc_id']} / {hit['page']}{RESET}  {hit['text'][:300]}")
+        alts = cand.get("alt_gold_candidates") or []
+        if alts:
+            self.say(f"\n{BOLD}Also possibly answered by (g to add as extra gold):{RESET}")
+            quotes = [e["quote"] for e in cand["evidence"]]
+            for n, cid in enumerate(alts, start=1):
+                chunk = self.chunks.get(cid, {})
+                self.say(f"  {BOLD}{n}.{RESET} {DIM}{cid} · {chunk.get('title')} — {chunk.get('heading')}{RESET}")
+                self.say(f"     {matching_passage(chunk.get('text', ''), quotes)}")
         sug = self.suggestions.get(cand["candidate_id"])
         if sug:
             self._show_opinion("Suggested", sug, cand)
@@ -186,8 +213,10 @@ class Reviewer:
             self._show(cand)
             sug = self.suggestions.get(cand["candidate_id"])
             second = (sug or {}).get("second")
+            alts = cand.get("alt_gold_candidates") or []
+            extra_gold: list[str] = []
             prompt = "\n" + ("[a]ccept suggestion " if sug else "") + ("[b] accept second " if second else "") \
-                + "[k]eep [e]dit [d]rop [s]kip [q]uit > "
+                + ("[g] add gold " if alts else "") + "[k]eep [e]dit [d]rop [s]kip [q]uit > "
             while True:
                 choice = self.ask(prompt).strip().lower()
                 if choice == "q":
@@ -195,6 +224,12 @@ class Reviewer:
                     return kept
                 if choice == "s":
                     break
+                if choice == "g" and alts:
+                    picks = self.ask(f"add which as extra gold (1-{len(alts)}, comma-separated)? ").replace(" ", "")
+                    chosen = [alts[int(p) - 1] for p in picks.split(",") if p.isdigit() and 1 <= int(p) <= len(alts)]
+                    extra_gold = list(dict.fromkeys(extra_gold + chosen))
+                    self.say(f"extra gold: {', '.join(extra_gold) or '(none)'}")
+                    continue
                 entry = {"candidate_id": cand["candidate_id"], "reviewer": "human"}
                 if sug:
                     entry.update(suggestion=sug["decision"], accepted=choice == "a")
@@ -211,11 +246,15 @@ class Reviewer:
                 elif choice == "e":
                     final, decision = self._edit(cand), "edit"
                 elif choice != "d":
-                    self.say("type " + ("a, " if sug else "") + ("b, " if second else "") + "k, e, d, s or q")
+                    self.say("type " + ("a, " if sug else "") + ("b, " if second else "") + ("g, " if alts else "")
+                             + "k, e, d, s or q")
                     continue
                 if choice == "d":
                     append_jsonl(self.log_path, {**entry, "decision": "drop"})
                     break
+                if extra_gold and final["type"] != "unanswerable":
+                    final = {**final, "gold_chunk_ids": list(dict.fromkeys(list(final["gold_chunk_ids"]) + extra_gold))}
+                    entry["added_gold"] = extra_gold
                 if final["type"] not in TYPES:
                     self.say(f"{RED}unknown type {final['type']!r}{RESET}")
                     continue

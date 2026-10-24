@@ -1,0 +1,328 @@
+{
+  "name": "rag-eval-bench-v1",
+  "pinned": "2026-10-24",
+  "max_figures_per_doc": 5,
+  "figure_thumb_width": 960,
+  "documents": [
+    {
+      "doc_id": "eu-ai-act",
+      "title": "Regulation (EU) 2024/1689 (Artificial Intelligence Act)",
+      "source": "eurlex",
+      "celex": "32024R1689",
+      "url": "http://publications.europa.eu/resource/celex/32024R1689",
+      "license": "EUR-Lex reuse under Commission Decision 2011/833/EU"
+    },
+    {
+      "doc_id": "wiki-artificial-intelligence-act",
+      "title": "Artificial Intelligence Act",
+      "source": "wikipedia",
+      "revision": 1373680212,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1373680212/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-regulation-of-artificial-intelligence",
+      "title": "Regulation of artificial intelligence",
+      "source": "wikipedia",
+      "revision": 1380620133,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380620133/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-general-data-protection-regulation",
+      "title": "General Data Protection Regulation",
+      "source": "wikipedia",
+      "revision": 1370738186,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1370738186/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-digital-services-act",
+      "title": "Digital Services Act",
+      "source": "wikipedia",
+      "revision": 1381212966,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381212966/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-brussels-effect",
+      "title": "Brussels effect",
+      "source": "wikipedia",
+      "revision": 1380966449,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380966449/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-ce-marking",
+      "title": "CE marking",
+      "source": "wikipedia",
+      "revision": 1378706458,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378706458/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-executive-order-14110",
+      "title": "Executive Order 14110",
+      "source": "wikipedia",
+      "revision": 1376382244,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1376382244/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-ai-safety-summit-2023",
+      "title": "AI Safety Summit 2023",
+      "source": "wikipedia",
+      "revision": 1379620416,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379620416/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-algorithmic-bias",
+      "title": "Algorithmic bias",
+      "source": "wikipedia",
+      "revision": 1381498975,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381498975/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-explainable-artificial-intelligence",
+      "title": "Explainable artificial intelligence",
+      "source": "wikipedia",
+      "revision": 1378696667,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378696667/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-facial-recognition-system",
+      "title": "Facial recognition system",
+      "source": "wikipedia",
+      "revision": 1379838123,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379838123/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-biometrics",
+      "title": "Biometrics",
+      "source": "wikipedia",
+      "revision": 1378826621,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378826621/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-emotion-recognition",
+      "title": "Emotion recognition",
+      "source": "wikipedia",
+      "revision": 1380996887,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380996887/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-social-credit-system",
+      "title": "Social credit system",
+      "source": "wikipedia",
+      "revision": 1378459030,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378459030/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-predictive-policing",
+      "title": "Predictive policing",
+      "source": "wikipedia",
+      "revision": 1379607738,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379607738/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-deepfake",
+      "title": "Deepfake",
+      "source": "wikipedia",
+      "revision": 1381336219,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381336219/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-credit-score",
+      "title": "Credit score",
+      "source": "wikipedia",
+      "revision": 1376951296,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1376951296/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-self-driving-car",
+      "title": "Self-driving car",
+      "source": "wikipedia",
+      "revision": 1380212490,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380212490/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-artificial-intelligence",
+      "title": "Artificial intelligence",
+      "source": "wikipedia",
+      "revision": 1381545652,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381545652/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-history-of-artificial-intelligence",
+      "title": "History of artificial intelligence",
+      "source": "wikipedia",
+      "revision": 1381578056,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381578056/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-ai-winter",
+      "title": "AI winter",
+      "source": "wikipedia",
+      "revision": 1380943703,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380943703/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-machine-learning",
+      "title": "Machine learning",
+      "source": "wikipedia",
+      "revision": 1381578119,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381578119/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-deep-learning",
+      "title": "Deep learning",
+      "source": "wikipedia",
+      "revision": 1378632336,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378632336/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-neural-network-machine-learning",
+      "title": "Neural network (machine learning)",
+      "source": "wikipedia",
+      "revision": 1381595715,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381595715/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-convolutional-neural-network",
+      "title": "Convolutional neural network",
+      "source": "wikipedia",
+      "revision": 1379323106,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379323106/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-transformer-deep-learning",
+      "title": "Transformer (deep learning)",
+      "source": "wikipedia",
+      "revision": 1381657826,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381657826/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-large-language-model",
+      "title": "Large language model",
+      "source": "wikipedia",
+      "revision": 1381651618,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381651618/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-generative-ai",
+      "title": "Generative AI",
+      "source": "wikipedia",
+      "revision": 1381430159,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381430159/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-reinforcement-learning",
+      "title": "Reinforcement learning",
+      "source": "wikipedia",
+      "revision": 1380875015,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380875015/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-backpropagation",
+      "title": "Backpropagation",
+      "source": "wikipedia",
+      "revision": 1381525335,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381525335/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-gradient-descent",
+      "title": "Gradient descent",
+      "source": "wikipedia",
+      "revision": 1373673523,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1373673523/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-retrieval-augmented-generation",
+      "title": "Retrieval-augmented generation",
+      "source": "wikipedia",
+      "revision": 1381095247,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381095247/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-word-embedding",
+      "title": "Word embedding",
+      "source": "wikipedia",
+      "revision": 1374850731,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1374850731/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-imagenet",
+      "title": "ImageNet",
+      "source": "wikipedia",
+      "revision": 1381301663,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381301663/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-alphago",
+      "title": "AlphaGo",
+      "source": "wikipedia",
+      "revision": 1379648512,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379648512/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-alphafold",
+      "title": "AlphaFold",
+      "source": "wikipedia",
+      "revision": 1380455096,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1380455096/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-chatgpt",
+      "title": "ChatGPT",
+      "source": "wikipedia",
+      "revision": 1381326934,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1381326934/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-turing-test",
+      "title": "Turing test",
+      "source": "wikipedia",
+      "revision": 1379885998,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1379885998/html",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "doc_id": "wiki-moore-s-law",
+      "title": "Moore's law",
+      "source": "wikipedia",
+      "revision": 1378571502,
+      "url": "https://en.wikipedia.org/w/rest.php/v1/revision/1378571502/html",
+      "license": "CC BY-SA 4.0"
+    }
+  ]
+}

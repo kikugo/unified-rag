@@ -15,15 +15,10 @@ from google.genai import types
 
 from rag_core import call_with_retry
 from media_ingest import chunk_audio_bytes, decode_audio_to_wav, resize_image_if_needed
+from rag.models import EMBEDDING_MODEL, UTILITY_MODEL
+from rag.pipeline import HYDE_PROMPT, hyde_vector
 
 _client: genai.Client | None = None
-
-
-# Model ids in one place. gemini-2.5-flash is already returning 404 "no longer
-# available to new users" on recently issued API keys, and it was hardcoded in
-# five call sites here, so a key rotation would have broken all of them at once.
-UTILITY_MODEL = "gemini-3.5-flash-lite"   # routing, rewriting, captions, transcription
-EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
 
 def set_client(client: genai.Client) -> None:
@@ -157,35 +152,27 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
     """HyDE: draft a hypothetical answer, embed it, and average with the query.
 
     Retrieval then matches passages by meaning, not just shared keywords. Falls
-    back to the plain query embedding if the draft or its embedding fails.
+    back to the plain query embedding if the draft or its embedding fails. The
+    averaging lives in `rag.pipeline.hyde_vector`, shared with the CLI.
     """
-    try:
-        draft = call_with_retry(lambda: _client.models.generate_content(
+    def draft(question: str) -> str:
+        resp = call_with_retry(lambda: _client.models.generate_content(
             model=UTILITY_MODEL,
-            contents=f"Write a short, factual passage that would answer this question:\n{query}",
+            contents=HYDE_PROMPT.format(question=question),
         ))
-        record_usage(getattr(draft, "usage_metadata", None))
-        hypothetical = (draft.text or "").strip()
-    except Exception:
-        hypothetical = ""
+        record_usage(getattr(resp, "usage_metadata", None))
+        return resp.text or ""
 
-    vectors = []
-    for text in (query, hypothetical):
-        if not text:
-            continue
-        try:
-            result = call_with_retry(lambda t=text: _client.models.embed_content(
-                model=EMBEDDING_MODEL,
-                contents=t,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
-            ))
-            record_usage(getattr(result, "usage_metadata", None))
-            vectors.append(np.array(result.embeddings[0].values))
-        except Exception:
-            continue
-    if not vectors:
-        return None
-    return np.mean(vectors, axis=0)
+    def embed(text: str) -> np.ndarray:
+        result = call_with_retry(lambda: _client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=text,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
+        ))
+        record_usage(getattr(result, "usage_metadata", None))
+        return np.array(result.embeddings[0].values)
+
+    return hyde_vector(query, draft, embed)
 
 
 def transcribe_video_audio(video_bytes: bytes) -> list[tuple[float, float, str]]:

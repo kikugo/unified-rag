@@ -6,3 +6,8 @@ __pycache__/
 chroma_db/
 .unified_rag_store/
 .streamlit/secrets.toml
+
+# benchmark index, caches and raw corpus downloads
+.eval_index/
+.cache/
+corpus/raw/

@@ -219,7 +219,8 @@ def bm25_rank(query: str, docs: list[dict[str, Any]], k1: float = 1.5, b: float 
     return sorted(scored, key=lambda item: item[1], reverse=True)
 
 
-def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
+def reciprocal_rank_fusion_scores(rankings: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
+    """RRF with the fused score kept, ties broken by first appearance."""
     scores: dict[str, float] = {}
     first_seen: dict[str, int] = {}
     seen_order = 0
@@ -230,7 +231,12 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
                 seen_order += 1
             scores[doc_id] = scores.get(doc_id, 0.0) + 1 / (k + rank + 1)
 
-    return sorted(scores, key=lambda doc_id: (-scores[doc_id], first_seen[doc_id]))
+    ordered = sorted(scores, key=lambda doc_id: (-scores[doc_id], first_seen[doc_id]))
+    return [(doc_id, scores[doc_id]) for doc_id in ordered]
+
+
+def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
+    return [doc_id for doc_id, _ in reciprocal_rank_fusion_scores(rankings, k)]
 
 
 def within_demo_upload_cap(current: int, limit: int) -> bool:

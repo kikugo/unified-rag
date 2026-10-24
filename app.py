@@ -16,14 +16,12 @@ from google.genai import types
 import chromadb
 from rag_core import (
     MANAGED_BACKEND,
-    bm25_rank,
     build_local_answer_prompt,
     build_rehydrated_sources,
     call_with_retry,
     format_prompt_cost,
     is_transient_error,
     pop_source_by_id,
-    reciprocal_rank_fusion,
     select_context_results,
     source_artifacts,
     within_demo_upload_cap,
@@ -51,6 +49,8 @@ from media_ingest import (
 from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
 from source_registry import delete_source, list_sources, upsert_source
 from app import gemini
+from rag.models import ANSWER_MODEL, DEMO_ANSWER_MODEL, EMBEDDING_MODEL
+from rag.pipeline import ChromaStore, Config, build_answer_contents, retrieve
 from app.gemini import (
     auto_caption_image,
     embed_audio,
@@ -71,7 +71,7 @@ MAX_UPLOADS_PER_SESSION = int(os.getenv("MAX_UPLOADS_PER_SESSION", "5"))
 # exhaust the daily quota. Both were on the 2.5 line until 2026-08-01, when that
 # generation started returning 404 to newly issued API keys; 2.5 Pro was also
 # only 1K requests a day against 3.6 Flash's 10K.
-MANAGED_ANSWER_MODEL = "gemini-3.5-flash-lite" if DEMO_MODE else "gemini-3.6-flash"
+MANAGED_ANSWER_MODEL = DEMO_ANSWER_MODEL if DEMO_MODE else ANSWER_MODEL
 
 # page config
 st.set_page_config(page_title="Unified RAG", layout="wide")
@@ -584,84 +584,72 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
     except Exception as e:
         st.error(f"Error saving to database: {e}")
 
+class _QueryEmbeddingError(Exception):
+    """Raised by the app's query embedder after it has already shown the error."""
+
+
+class _AppQueryEmbedder:
+    """Adapts the app's Gemini calls to the pipeline's embedder interface."""
+
+    def __init__(self, dim: int):
+        self.dim = dim
+
+    def embed_query(self, text: str) -> np.ndarray:
+        try:
+            result = call_with_retry(lambda: client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=text,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=self.dim,
+                ),
+            ))
+        except Exception as e:
+            st.error(f"Query embedding error: {e}")
+            raise _QueryEmbeddingError() from e
+        gemini.record_usage(getattr(result, "usage_metadata", None))
+        return np.array(result.embeddings[0].values)
+
+    def hyde_query(self, text: str) -> np.ndarray:
+        vector = hyde_query_embedding(text, self.dim)
+        return vector if vector is not None else self.embed_query(text)
+
+
 def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> list[dict]:
-    """Embed query and query ChromaDB for top-K results."""
+    """Hybrid dense + BM25 search over this corpus through the shared pipeline.
+
+    Same config the app has always run (RRF over a 4x candidate pool, HyDE when
+    toggled, no reranker), now in `rag.pipeline` so the CLI and evals share it.
+    """
+    if query_emb is None and not query:
+        return []
+    store = ChromaStore(chroma_collection, where={"corpus_id": st.session_state.corpus_id})
     try:
-        corpus_docs = chroma_collection.get(where={"corpus_id": st.session_state.corpus_id})
-        if not corpus_docs.get("ids"):
+        if store.count() == 0:
             return []
     except Exception:
         return []
 
-    effective_query = query or ""
-
-    if query_emb is None and query:
-        dim = st.session_state.get("embedding_dim", 3072)
-        if st.session_state.get("use_hyde"):
-            query_emb = hyde_query_embedding(query, dim)
-        if query_emb is None:
-            try:
-                result = call_with_retry(lambda: client.models.embed_content(
-                    model="gemini-embedding-2-preview",
-                    contents=effective_query or query,
-                    config=types.EmbedContentConfig(
-                        task_type="RETRIEVAL_QUERY",
-                        output_dimensionality=dim,
-                    ),
-                ))
-                gemini.record_usage(getattr(result, "usage_metadata", None))
-                query_emb = np.array(result.embeddings[0].values)
-            except Exception as e:
-                st.error(f"Query embedding error: {e}")
-                return []
-    elif query_emb is None:
-        return []
-
-    candidate_count = min(max(top_k * 4, top_k), len(corpus_docs["ids"]))
-
-    # Query Chroma
+    cfg = Config(
+        mode="hybrid_rrf",
+        hyde=bool(st.session_state.get("use_hyde")),
+        top_k=top_k,
+        context_k=top_k,
+        candidate_k=top_k * 4,
+    )
+    embedder = _AppQueryEmbedder(st.session_state.get("embedding_dim", 3072))
     try:
-        results = chroma_collection.query(
-            query_embeddings=[query_emb.tolist()],
-            n_results=candidate_count,
-            where={"corpus_id": st.session_state.corpus_id},
-        )
+        hits = retrieve(query, cfg, store, embedder, query_emb=query_emb)
+    except _QueryEmbeddingError:
+        return []
     except Exception as e:
         st.error(f"Database query error: {e}")
         return []
-    
-    corpus_metas = corpus_docs.get("metadatas") or []
-    corpus_meta_by_id = {doc_id: meta for doc_id, meta in zip(corpus_docs["ids"], corpus_metas) if meta}
-    sparse_docs = [
-        {"id": doc_id, "searchable_text": meta.get("searchable_text", meta.get("name", ""))}
-        for doc_id, meta in corpus_meta_by_id.items()
-    ]
-    dense_ids = results["ids"][0] if results and results.get("ids") and results["ids"] else []
-    sparse_ids = [doc_id for doc_id, _ in bm25_rank(effective_query or query or "", sparse_docs)[:candidate_count]]
-    fused_ids = reciprocal_rank_fusion([dense_ids, sparse_ids])[:top_k]
-    fused_position = {doc_id: rank for rank, doc_id in enumerate(fused_ids)}
-
-    result_rows = []
-    if dense_ids:
-        for i, doc_id in enumerate(dense_ids):
-            result_rows.append((
-                doc_id,
-                results["metadatas"][0][i],
-                results["distances"][0][i] if "distances" in results and results["distances"] else 0.0,
-            ))
-
-    # Reuse the corpus metadata already fetched above instead of a second Chroma call.
-    missing_ids = [doc_id for doc_id in fused_ids if doc_id not in dense_ids]
-    for doc_id in missing_ids:
-        meta = corpus_meta_by_id.get(doc_id)
-        if meta:
-            result_rows.append((doc_id, meta, 1.0))
-
-    result_rows.sort(key=lambda row: fused_position.get(row[0], len(fused_position)))
 
     # Format the results
     out = []
-    for doc_id, meta, dist in result_rows[:top_k]:
+    for hit in hits:
+        meta = hit.metadata
         # Preferred path-based storage with fallback to legacy base64 metadata.
         file_bytes = read_blob(meta.get("file_path"))
         if not file_bytes:
@@ -677,20 +665,21 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
 
         out.append({
             "source_id": meta.get("source_id"),
-            "id": doc_id,
+            "id": hit.chunk_id,
             "name": meta.get("name", "Unknown Document"),
             "type": meta.get("type", "unknown"),
             "mime": meta.get("mime", "application/octet-stream"),
             "bytes": file_bytes,
             "preview_bytes": preview_bytes,
             "video_bytes": video_bytes if video_bytes else None,
-            "score": 1.0 - dist,  # Chroma returns cosine distance; metric is 1 - similarity
+            # Cosine similarity; keyword-only hits have no dense score and show 0.
+            "score": hit.dense_score if hit.dense_score is not None else 0.0,
             "searchable_text": meta.get("searchable_text", ""),
             "timestamp_start_sec": meta.get("timestamp_start_sec"),
             "page_range": meta.get("page_range"),
         })
-    # Already ordered by RRF fusion above; a second sort here only penalized
-    # keyword-only hits (whose dense score is 0), so we trust the fused order.
+    # Already ordered by RRF fusion in the pipeline; a second sort here only
+    # penalized keyword-only hits (whose dense score is 0), so we trust that order.
     return out
 
 def _usage_dict(usage) -> dict | None:
@@ -711,28 +700,8 @@ def answer(question: str, selected_results: list[dict],
 
     history: list of {role, content} dicts from st.session_state.messages (most recent last).
     """
-    # Build multi-turn contents: [prior turns...] + [retrieved doc] + [current question]
-    MAX_HISTORY = 6  # keep last 3 exchanges to stay within context limits
-    contents: list = []
-    if history:
-        for msg in history[-(MAX_HISTORY):]:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
-    # Append current turn: retrieved document + the question
-    prompt = build_local_answer_prompt(question, selected_results)
-    parts = []
-    for result in selected_results:
-        parts.append(types.Part(text=f"Source [{result['citation_id']}] content follows."))
-        if result.get("bytes"):
-            parts.append(types.Part.from_bytes(
-                data=result["bytes"],
-                mime_type=result.get("mime", "application/octet-stream"),
-            ))
-    parts.append(types.Part(text=prompt))
-    contents.append(types.Content(
-        role="user",
-        parts=parts,
-    ))
+    # Prior turns, then each retrieved source, then the grounded prompt.
+    contents = build_answer_contents(question, selected_results, history)
     for attempt in range(3):
         produced = False
         try:

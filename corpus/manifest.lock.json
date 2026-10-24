@@ -1,0 +1,690 @@
+{
+  "documents": {
+    "eu-ai-act": {
+      "chars": 584887,
+      "raw_sha256": "bba630444b3278e881066774002a1d7824308934f49ccfa203e65be43692f55e",
+      "rows": 144,
+      "text_sha256": "3c251f40423c5bb762f79332a76f7e544273fd4a85c6f0d7906e0519283af903"
+    },
+    "wiki-ai-safety-summit-2023": {
+      "chars": 3150,
+      "raw_sha256": "0501cb190774b5ae9541db6c20cd62303fc20288f53dc1c15f3f2f6aaab35b15",
+      "rows": 5,
+      "text_sha256": "fd0a13034ebc0e3761687120c2de3d2b4b2abe80e547a6d5f8eee6cb7c6d5101"
+    },
+    "wiki-ai-winter": {
+      "chars": 22459,
+      "raw_sha256": "5b78962716e64945a7743d505c60c11963abf719ef5cd8bf3dc08143ccce440e",
+      "rows": 13,
+      "text_sha256": "1d0d01cc359d8d2d771ad8070efc761823aa3e0650b484a912818dad2d778d4a"
+    },
+    "wiki-algorithmic-bias": {
+      "chars": 73002,
+      "raw_sha256": "7ee520a04692c632077fee47ef425f8899ecf47abfca484f2d6033dc7fa1258a",
+      "rows": 44,
+      "text_sha256": "94a7f52a0dda0c0efdf5123ccf0b87bcd7b253d59d1261fee9006ac89dd745c2"
+    },
+    "wiki-alphafold": {
+      "chars": 28206,
+      "raw_sha256": "9000616684731cb378f4995c1886b34abb1c5072873290289a7fbfb103982e9d",
+      "rows": 23,
+      "text_sha256": "3250f875305bfb0bd7d9cee970efe892f4ea8b336361f7bb03e8f6bc9b932c30"
+    },
+    "wiki-alphago": {
+      "chars": 27151,
+      "raw_sha256": "b07a63da8dcdccfed93d235637a130ea3b47172be3bce6452eda8d6af47db5b5",
+      "rows": 19,
+      "text_sha256": "f3c64f85ba09c3f503743fad6c67c0a4b97ec637b18b385aa29101c3fe90a425"
+    },
+    "wiki-artificial-intelligence": {
+      "chars": 86395,
+      "raw_sha256": "c01ae49837ee32789c1e24ce4ec510ad1449618ccb7b5fdcbc2c1fc470ce937d",
+      "rows": 65,
+      "text_sha256": "7a9a2bef057bf8b8949039dc7de3c412ba1e83e22bab90202eda2854eaafe12c"
+    },
+    "wiki-artificial-intelligence-act": {
+      "chars": 22369,
+      "raw_sha256": "6190a9cd88a1ecf98487ff0c480ad51371f8e6950f4f0ec6f6d2489c089945ea",
+      "rows": 9,
+      "text_sha256": "720de799f82b0e7de7716fac7d5cb15c35f36354471dd950d4bab9a8c924106f"
+    },
+    "wiki-backpropagation": {
+      "chars": 31205,
+      "raw_sha256": "397e79e5f5c50162914a1643f2a3a2a09c0cf8c29d74b3c3383af3b65a698627",
+      "rows": 17,
+      "text_sha256": "85eac847275c89afc6c1e80ab8d826ad547d29e573225edabe98239fd357bd06"
+    },
+    "wiki-biometrics": {
+      "chars": 36804,
+      "raw_sha256": "d893be9f84d711f02fe592f92611051824c85aef06b088824c17028ecf089a24",
+      "rows": 26,
+      "text_sha256": "245f6aad259305b951b301b55a67b932134fe594dc49905ec35380772547f5ad"
+    },
+    "wiki-brussels-effect": {
+      "chars": 8252,
+      "raw_sha256": "1e664b1b23ea36bbc17e7a61e234e3753607ba275ba0e9f413d9e74953d2cd79",
+      "rows": 10,
+      "text_sha256": "e2d501ba3f02946f762f92fddcce570d8c4ef16b313fc8d44c7ffe9dc2b133e6"
+    },
+    "wiki-ce-marking": {
+      "chars": 26732,
+      "raw_sha256": "c45d5cf20c0382c208222d9f610afce380136ee4166b8664eefd381eac02dcb9",
+      "rows": 15,
+      "text_sha256": "f13af31e1601a50b736f892754142a14304bd12591d18fd05522a3ae64d400b0"
+    },
+    "wiki-chatgpt": {
+      "chars": 32920,
+      "raw_sha256": "7c0ffbbc95c99742f8cfa64a4e3622fd093af667cd57d1e4e93275f6ef1663e6",
+      "rows": 34,
+      "text_sha256": "1210622f0df5c9440f8501630aabe47c23cef178753a91035779fbbac9c2c04c"
+    },
+    "wiki-convolutional-neural-network": {
+      "chars": 59899,
+      "raw_sha256": "2c11757dea0c45e86c19e40a632d1518c2a11f4152e093f6fc1897d6ff1be7a0",
+      "rows": 65,
+      "text_sha256": "dbb1182105a8ca6d70d07e1de8f6cc2d59ec6cc0e3c1469b0e5cf17913b68ef9"
+    },
+    "wiki-credit-score": {
+      "chars": 21929,
+      "raw_sha256": "fa134c8c4dd222fe39f0566eda995a295a0afa873eaec137a2e2f492de4b9375",
+      "rows": 16,
+      "text_sha256": "0ade03f3d101382f0e412345216892f6b59834942f14f288bd25f4f4f53066a0"
+    },
+    "wiki-deep-learning": {
+      "chars": 57325,
+      "raw_sha256": "4e035322a665904b679979722038b42c6be3a88b29f7c25424696510669891f1",
+      "rows": 37,
+      "text_sha256": "222575803df4b5c38f78c24ac79b1d383e928ba7e7b43f2324bdd7613b4b95bb"
+    },
+    "wiki-deepfake": {
+      "chars": 58251,
+      "raw_sha256": "660e50310bf0d8f5b5e020e8ffe111d37e56d038c5226f42af0f6cf36ebb2f80",
+      "rows": 34,
+      "text_sha256": "6cb816ab3d8a0a74fd34329d56044761d727bfbaab92b4cdb11309a7378f1fd8"
+    },
+    "wiki-digital-services-act": {
+      "chars": 26773,
+      "raw_sha256": "0b84025cddcd1d4dc253c485fbfdd13939c234b58a004d83d75b83840997ad45",
+      "rows": 15,
+      "text_sha256": "9e72a82efd9004bc8e2c6c0fbd0c2c05d71cd4a72494c4b07e14e6a592c73995"
+    },
+    "wiki-emotion-recognition": {
+      "chars": 14177,
+      "raw_sha256": "d153b370f8863d6c69d478a73bec1050729203c10f16e3a8bb3e58f8da1dcc67",
+      "rows": 14,
+      "text_sha256": "a6843834662a3cb4ee36beaf113a101317385e38c7d5aae698bdde41b6ad451a"
+    },
+    "wiki-executive-order-14110": {
+      "chars": 7471,
+      "raw_sha256": "c8aa096954f89f55428c367a6381c8eee9ceeb0201eb045c91aeae0b3fb69247",
+      "rows": 11,
+      "text_sha256": "718dbe96d577bc230cef8173d883d349e9c06627bc95ccb90790f9db2fcd973a"
+    },
+    "wiki-explainable-artificial-intelligence": {
+      "chars": 28544,
+      "raw_sha256": "e93861f87dc0d370509fd9590cafd8dd2ed6551b6ef371347aa845ee5863bdaf",
+      "rows": 19,
+      "text_sha256": "fd7a0831a2a3e9d232f3c81890d071127114eb14a844290e29a0baf0af641278"
+    },
+    "wiki-facial-recognition-system": {
+      "chars": 74264,
+      "raw_sha256": "27661470d63a26c1f0780cc3a6f467c6d71a2ae432d5edcf1ba52ca01e47f0c7",
+      "rows": 43,
+      "text_sha256": "46555748376e83c33e1be6cc7546d88e9584c3f31fdd2b4e02d392f21c83115c"
+    },
+    "wiki-general-data-protection-regulation": {
+      "chars": 51153,
+      "raw_sha256": "1615867070f43cc54c5d362b12ddeb4d77c1331b05077e45b171201ca766d914",
+      "rows": 29,
+      "text_sha256": "cc555379dba3e8cd88596d5ed27c24a300a63b86989ed65ccae68b32eab201d2"
+    },
+    "wiki-generative-ai": {
+      "chars": 40364,
+      "raw_sha256": "948140ce626a707d76a18e0a82cf57522b1de0aac6af4fe45e6a781f18836221",
+      "rows": 40,
+      "text_sha256": "4f05db2b5777ed10b5d52abed689a1730098bf0b5654b247faddf8b078c2e858"
+    },
+    "wiki-gradient-descent": {
+      "chars": 24309,
+      "raw_sha256": "b38db0c23041acda80a8efc0f13e1c05f0f7c997e8fc5fb19ccb953584529e58",
+      "rows": 14,
+      "text_sha256": "bc84c6705ae5003d0ae8ed691a94bc4f9a75497d3dba8e90b7660254d36c5c6d"
+    },
+    "wiki-history-of-artificial-intelligence": {
+      "chars": 75388,
+      "raw_sha256": "00eebdd526cb9481d8a9987445c4716907d6daeee588020aafd0a1067ef6366e",
+      "rows": 56,
+      "text_sha256": "fa06d556290951ad7fe1ede4b78beb7d63f2015b884a4a13f4764ab896d43d8a"
+    },
+    "wiki-imagenet": {
+      "chars": 14261,
+      "raw_sha256": "c0086dba975e7308a15c51178d2bd9751b83028141ca9b79b4e0da10d83de8d7",
+      "rows": 12,
+      "text_sha256": "ddb3b1091c0e6c0202917e423266d293946847763df1abc464e128c6ca6710f1"
+    },
+    "wiki-large-language-model": {
+      "chars": 48183,
+      "raw_sha256": "f4e7e4b126a41b88281f27d9e6a88fb36ca708cc69f3f6e234b558c843ec0d66",
+      "rows": 50,
+      "text_sha256": "69af10c47a0c59fed5bd24aeb097601506fbac1a634d188187ee7b8fe5cfb20f"
+    },
+    "wiki-machine-learning": {
+      "chars": 64500,
+      "raw_sha256": "419a91f0f0591e0d5a9dde7fa319b913df48337dbaad9c710dd2ccf0a3ce7e4e",
+      "rows": 56,
+      "text_sha256": "e5a0564175cfd89ed9aafdf0829c5b3491c77f74a61cace1cfb1b7131cd647df"
+    },
+    "wiki-moore-s-law": {
+      "chars": 33183,
+      "raw_sha256": "ecf4b54d293ff28c8e49f6e7822b344d5524864eb171fbff67098020c96c088c",
+      "rows": 9,
+      "text_sha256": "ecf2a2aab28fa11ba27a92eb76035d47dfe52addddf959d40b5c1b9f00669653"
+    },
+    "wiki-neural-network-machine-learning": {
+      "chars": 47720,
+      "raw_sha256": "d394f6cf9f76d88d2be6b916941375bb7f5a8f2f245ad710c65675c62a4117ef",
+      "rows": 50,
+      "text_sha256": "f27e053973e64d9128fe29c7a581112ab7191b8615140b7f83b035d63a87a887"
+    },
+    "wiki-predictive-policing": {
+      "chars": 14714,
+      "raw_sha256": "d1fa570633e90cec8aae14cf5615a27f0c093cbd518ccdbc4d9e7fcdcf036a47",
+      "rows": 10,
+      "text_sha256": "b1402f16ccb2120f594682495ff5775c4ea809e918caee8390d1cd3b209d9962"
+    },
+    "wiki-regulation-of-artificial-intelligence": {
+      "chars": 67437,
+      "raw_sha256": "36c31873463f839f92ce73dba7f61da65e1da36ad43597916981a5cce1bc8933",
+      "rows": 33,
+      "text_sha256": "39bdadd06f0a011a53359eeeb48d6bd96659a58820ff63ad1b75079b41794958"
+    },
+    "wiki-reinforcement-learning": {
+      "chars": 35393,
+      "raw_sha256": "efb74e517e591bc44f96867030f8514dc45397b231a47114dc9942558dbda6be",
+      "rows": 32,
+      "text_sha256": "afd4d5daabd79ab8584ed8442565ec2196e1e8d3d62315d91b43684de1092eac"
+    },
+    "wiki-retrieval-augmented-generation": {
+      "chars": 10641,
+      "raw_sha256": "3080f4687aeec4198af74f911301a84010a0d3f136d9b35d281ae9c955c5b668",
+      "rows": 13,
+      "text_sha256": "3e8a7c3015ea85ccc306336dcf57b637338834e3521db0a16862c05a51417b34"
+    },
+    "wiki-self-driving-car": {
+      "chars": 53136,
+      "raw_sha256": "2cea12dc9d1147b1d6ef55ebc9726683f68b90acb18e1bb0436fa53ace2483d8",
+      "rows": 73,
+      "text_sha256": "b7ebda51b6a8f7fd7b6ea817ec65d00d4459f612b97263955016b29ca7d50d71"
+    },
+    "wiki-social-credit-system": {
+      "chars": 60075,
+      "raw_sha256": "14df0dc5650242ba8ee13200555b09bec8e082a2355e270b60e1e8c234903a71",
+      "rows": 33,
+      "text_sha256": "2261204d1d455b62279c3b0e4aa0e82b2aa9d9048094e865fd43c10298eda44a"
+    },
+    "wiki-transformer-deep-learning": {
+      "chars": 60685,
+      "raw_sha256": "229adac7909ab7c5ec58a227e821b7eb4fe5c2c72decab784576241db4be5a97",
+      "rows": 45,
+      "text_sha256": "21544812f77db785344243e875bc59bf9a3091ff7d2f85de79ecf28d7c564f1f"
+    },
+    "wiki-turing-test": {
+      "chars": 50985,
+      "raw_sha256": "abfc1bd60d10ae1604499b1132b1ecf969cf8880dadd90e98889877f6324d2b5",
+      "rows": 41,
+      "text_sha256": "2d7cd4240191f45a22328f8cbfa5f5592c8cabe9d1afd5bc9e118714338995ec"
+    },
+    "wiki-word-embedding": {
+      "chars": 9807,
+      "raw_sha256": "248cc1e062fdd60480951fb00c5a174fe0e1e792cf2173145d85c4d2e2d2bd1d",
+      "rows": 9,
+      "text_sha256": "412480e435f05c1705f9eebb5aa55b18489b65f01f297ba6daf70c423a7aa64e"
+    }
+  },
+  "figures": {
+    "wiki-ai-safety-summit-2023-0.jpg": {
+      "commons_sha1": "ff59c44d7f60d7ee43fde75a06bb35e8a674eec4",
+      "thumb_sha256": "6a018267ea04f0da62a1a9d4ea60767f971f3ba4ec934229fdba818297a6e428"
+    },
+    "wiki-ai-winter-0.jpg": {
+      "commons_sha1": "64e5cfc91e05ed6a22424e916261a3c3448e53c1",
+      "thumb_sha256": "084cea81f0e0d75dd65a6ac866cd148c5bc710f59b5a427eff141dd455488ed4"
+    },
+    "wiki-algorithmic-bias-0.png": {
+      "commons_sha1": "e07b039576f73b2fe4d176cb269c6e02130a6860",
+      "thumb_sha256": "e855e346ef1f417ab989639b67555046068dfb6bc2aab5922b96c43063df8b76"
+    },
+    "wiki-algorithmic-bias-1.jpg": {
+      "commons_sha1": "d1637b3125f69ce45afc191113c28f1bcbc28c4c",
+      "thumb_sha256": "02b5d9c8cfa9eade4ae789d974b61437594a01803e03487485cb20770631e10e"
+    },
+    "wiki-algorithmic-bias-2.jpg": {
+      "commons_sha1": "bdf7d3d91bf9d9e728d296e67b49b67f8c85e979",
+      "thumb_sha256": "eec651764ed0cb1456ff20c97fd9f9b5cc91de24338d2031b30f464a8952f407"
+    },
+    "wiki-algorithmic-bias-3.jpg": {
+      "commons_sha1": "3ce0e693254af3c06fb823ae9cf9b8053957196a",
+      "thumb_sha256": "02752f51d527c4e3f274059aec8adada896067ebcaac8a9c32b4360aff834972"
+    },
+    "wiki-alphafold-0.gif": {
+      "commons_sha1": "0f14e1f13a9d210ab4381d11b7263d275b9c9f1b",
+      "thumb_sha256": "cbad3f6ffb6347b42217019a172dd34b6f457a077dbe460c0520790ecec29daa"
+    },
+    "wiki-alphafold-1.png": {
+      "commons_sha1": "878b7cb77f0be7869d61969665c6e03e8291077d",
+      "thumb_sha256": "d7b7ac444ad76230e62d9d857e454dbaeff7e6f0e0f0c4ab5438737dd5988970"
+    },
+    "wiki-alphafold-2.png": {
+      "commons_sha1": "ab196f46981705f6639c2cda39395fcc800eda08",
+      "thumb_sha256": "03c9a369ee7ff8b4f6420d0cd5791c1dc21afc860dd59aca0e60510dbe4cd506"
+    },
+    "wiki-alphafold-3.png": {
+      "commons_sha1": "6bf6a8b732716d04608af5e7fbd057584673a227",
+      "thumb_sha256": "2863c0462c65f65d6d030ed6f1865696e5e42ce2a5722d385960b9f46711a89d"
+    },
+    "wiki-alphafold-4.jpg": {
+      "commons_sha1": "c74ccd6e65e9c8d50f535b20abcfcf4a5222b58a",
+      "thumb_sha256": "13693aec641a70749a9ee310972b27d0a243046ad94c968900f1a1a30a43e0d6"
+    },
+    "wiki-alphago-0.jpg": {
+      "commons_sha1": "43b137677a09033b76cff14781e92e5e0ca838df",
+      "thumb_sha256": "c46fb648a0a0b368bf97aea8b52bfdd4eab69914b937cfce232600ca87775899"
+    },
+    "wiki-artificial-intelligence-0.png": {
+      "commons_sha1": "c93ce6170673e7366174cc66c1ea87528f45ee74",
+      "thumb_sha256": "6418b0c5a921264e22f223efb7a9224e5176b134365818b54af92b13f4ef9e0e"
+    },
+    "wiki-artificial-intelligence-1.png": {
+      "commons_sha1": "ab6d9c5fd741be9828fe302a27664fa082d29626",
+      "thumb_sha256": "99939187cb9d1b1723a3fc59ae0bc648b9b65f09c3cb1d1c9775166594f5a530"
+    },
+    "wiki-artificial-intelligence-2.jpg": {
+      "commons_sha1": "8d4832e446a84e058c8b571fa505665b043bd72f",
+      "thumb_sha256": "64ea585c9bcfada8e73560568ca0232da3cfc21a01037784b24c6fee543ba381"
+    },
+    "wiki-artificial-intelligence-3.gif": {
+      "commons_sha1": "5f21ecb37864995659c598e1bd301e90e17ae8b1",
+      "thumb_sha256": "bcb5d53f37d4008b9551a4b177b2e1a44822a818f06e2fb1447d40b9e874777e"
+    },
+    "wiki-artificial-intelligence-4.png": {
+      "commons_sha1": "99b66cfd639df7fa65c0b335757053ccfedb27ee",
+      "thumb_sha256": "0a03ba889526a98647fb843a0e606261b4184f7432a255a542f3329a3f3b5acf"
+    },
+    "wiki-artificial-intelligence-act-0.png": {
+      "commons_sha1": "272b98891b3a9170d73f13aa75b21607a743ddbf",
+      "thumb_sha256": "b1a0c7f936fe5afdfbcd35470569da7c8450ced2b5be6354f65cb522e95ca765"
+    },
+    "wiki-backpropagation-0.png": {
+      "commons_sha1": "40fe3075de84ada6ebc782cc13cb4ae55ba48d95",
+      "thumb_sha256": "30cc7dc4f89ab5e9108da56bd26c143926ec183ebd6813bacb070edd826069bf"
+    },
+    "wiki-backpropagation-1.png": {
+      "commons_sha1": "15dabb5d3513a2d0c97a96a36659e7a17740011e",
+      "thumb_sha256": "22bb1077f8aa7f542741d4ced7067f48ffbd357a9485a970f5f73451384bed32"
+    },
+    "wiki-backpropagation-2.png": {
+      "commons_sha1": "ebb2d85f97c42b2e0f8721a8b6e2132b672faf57",
+      "thumb_sha256": "1dcd344ffba4adb90edd5cf69203f8087d7598423809b1f959d8f4725bc2973c"
+    },
+    "wiki-backpropagation-3.png": {
+      "commons_sha1": "227854cfdbb93bca33885dbf579aff7859d44ed3",
+      "thumb_sha256": "1eca329ab5ddc5ff36cdc5cacf791e1f148d1cf20fe57a0f678b289de9e5faba"
+    },
+    "wiki-biometrics-0.jpg": {
+      "commons_sha1": "c5ec7a90b17cbad980b20c941f5940719f3936cb",
+      "thumb_sha256": "604f6e8d5e01808d61e0a20b2f48379aa3dd9b14df76c6dde7086a26e12a09d3"
+    },
+    "wiki-biometrics-1.png": {
+      "commons_sha1": "f2cf1cbbc2559cce9bed118cea757158c830c3e2",
+      "thumb_sha256": "6266677b3b05246924caf2afac7a47bd50e3644b4f5e08f9aa6610572546f7e4"
+    },
+    "wiki-brussels-effect-0.jpg": {
+      "commons_sha1": "627845ae04c064aac5f156b2e6557dfc8beb489b",
+      "thumb_sha256": "444ff87a19045a5ed5ffc85732b79ac4bef411a2e509974f497a504bbcdfb8a3"
+    },
+    "wiki-brussels-effect-1.jpg": {
+      "commons_sha1": "dc013f0fd05357f7d76b53bd8ed614ad5e45c4ff",
+      "thumb_sha256": "7fb848faca0fbfda0def3b625fc5ce73ac9f26946a6976ae5568b387e04775c6"
+    },
+    "wiki-ce-marking-0.jpg": {
+      "commons_sha1": "27cbe9f9738f7a652c45ffb2f1a57d660297f13e",
+      "thumb_sha256": "34d7a98b022193c6bafbbff47e06a58caa1c8d3d1913733b68c15a82aa0eadce"
+    },
+    "wiki-ce-marking-1.jpg": {
+      "commons_sha1": "b021fcf76656f8f13f11b4cc53578a3323a3bea5",
+      "thumb_sha256": "aa16dc18c3a348c5ea82fcbb5c880dda0fc228e4c4511d8dd7d5eb728d3f7653"
+    },
+    "wiki-ce-marking-2.png": {
+      "commons_sha1": "7286529fd8d12920a539f9b231d9a8e1db3ed8f3",
+      "thumb_sha256": "524edf60de7391cdc94075295f77473a398e0d36f8f70eda0b91c33843d4abb8"
+    },
+    "wiki-ce-marking-3.jpg": {
+      "commons_sha1": "09aa3057844aabfb80e9f119f37477a4c17f8ae3",
+      "thumb_sha256": "0433213eaf25111154a65419b192a138ed61efe540b851622eae0550810371b4"
+    },
+    "wiki-ce-marking-4.jpg": {
+      "commons_sha1": "8fb2ecc92a6ac33b43c96516eb83e24da6d4fd68",
+      "thumb_sha256": "9f5ec47a80402d3124e57e97205bce076c5a7fe6151f8b9f6eb37c21886ab513"
+    },
+    "wiki-chatgpt-0.jpg": {
+      "commons_sha1": "593b197c30c1f6480cc15061e67c4a5f71d154c8",
+      "thumb_sha256": "eb9f51f3df300f59347616183acec9a92f316bcddbc107ac9a22bd076b46f3ff"
+    },
+    "wiki-chatgpt-1.png": {
+      "commons_sha1": "ec7b7b92a97de2f4141f707b2f9660c75cae9aeb",
+      "thumb_sha256": "27ce2e511a2556133cb0adeeeb1cb6450e1974448a41a69b76b3eda1f139a833"
+    },
+    "wiki-chatgpt-2.png": {
+      "commons_sha1": "e0cc82bb8f8e18981b414a1d08d42d41e38590da",
+      "thumb_sha256": "81c1ad053895b67b3c0514d5e2c00db7cf179e5e5557ea4b4c2c6f75f02a7938"
+    },
+    "wiki-chatgpt-3.jpg": {
+      "commons_sha1": "bff969cda50ace4e94b0eb8da9d8cb8430c8a73e",
+      "thumb_sha256": "8d5e59c9400ae0405df108fac49f6035c1b3c6c8b38433e636e0ca758da05d33"
+    },
+    "wiki-chatgpt-4.png": {
+      "commons_sha1": "35706a311dda079ebbdba5c58c8666bf8161d989",
+      "thumb_sha256": "be20b7e963519143005da8b6edeaabbca5d0d36be42febf5363c840b40bc5501"
+    },
+    "wiki-convolutional-neural-network-0.png": {
+      "commons_sha1": "0e2e20f394e6d082d5a10745d307fa6189e195f3",
+      "thumb_sha256": "8471e3f8a8a9e2f45b490b17e0d3d4add1e609166e3ad1360765d6b872e0a089"
+    },
+    "wiki-convolutional-neural-network-1.png": {
+      "commons_sha1": "d9ebc7dbb3bfa386367650160c9f0b73acdf3a50",
+      "thumb_sha256": "c681e38b9becfb10bb13c49f6737919b0cd0adf5faf865351697ad7bb06b8d03"
+    },
+    "wiki-convolutional-neural-network-2.png": {
+      "commons_sha1": "85baa63acd9bd8ee970880c48318cb5f420d7f92",
+      "thumb_sha256": "c66ba1dac1b6a13179b25a8c87ee3cb9980dd763dfaeee4cd96f245a80ac38a8"
+    },
+    "wiki-convolutional-neural-network-3.png": {
+      "commons_sha1": "5987fb9ef7e44bc9492e8fff22113f817eddfbe9",
+      "thumb_sha256": "8c73ce71e6d25b24e828223558593286b96cf532112168deb645993048361aa7"
+    },
+    "wiki-convolutional-neural-network-4.png": {
+      "commons_sha1": "163273b81949501b42574a07223173c1f89851ed",
+      "thumb_sha256": "ac23ff42ce60d994968a6980ce6625a580090767a09bc2bb65d96ec0d8bcaed1"
+    },
+    "wiki-deep-learning-0.jpg": {
+      "commons_sha1": "e7e09682831d77bfcd9030497500bfe4886c50bd",
+      "thumb_sha256": "fdd67eea95d8b1fe8ca74d738cc19432d21908977ae64ed9fdd24f74d99eb53a"
+    },
+    "wiki-deep-learning-1.png": {
+      "commons_sha1": "8381f4b16bbed799a2b2fad955fb326dcca18072",
+      "thumb_sha256": "242764eca689d3911425003871f4a5863ca84c3c6af01755f8ee561dccb2a1ab"
+    },
+    "wiki-deep-learning-2.jpg": {
+      "commons_sha1": "0d0cca7c618ee78cef9f02814478056c61e1a577",
+      "thumb_sha256": "9b09dacb290a1ad0b4c566d4c2511d3342742db527e2e1593772db35eb9a4278"
+    },
+    "wiki-deepfake-0.jpg": {
+      "commons_sha1": "c58f6b18f306472e54f2bb40b13f04152fdfa058",
+      "thumb_sha256": "56ac8f664a997461cc4a237b7e26bf0d6565c4f9e13a7d579d35f49038e07fec"
+    },
+    "wiki-deepfake-1.jpg": {
+      "commons_sha1": "196c4513cd6f0cd6fdbbd444997578c11c49f7c5",
+      "thumb_sha256": "e05c5566ba9b909b10370e3f685695fc63478a5ddf2344a45211566d90ae389a"
+    },
+    "wiki-deepfake-2.jpg": {
+      "commons_sha1": "204520ef84fd87cf393b193ba2c3e06fedf8f4fd",
+      "thumb_sha256": "fa5eff30265f08391e3600d6f7330facb68f0ead2553fb9eff442f4b4740538f"
+    },
+    "wiki-executive-order-14110-0.jpg": {
+      "commons_sha1": "309e6bb0bbb2734a843649e88a4c6bf2df2d7eba",
+      "thumb_sha256": "94ccbe0d14ae8105b3d66dbcd5bca124a2ba4600f26e3e36eb78d431b8687c0e"
+    },
+    "wiki-executive-order-14110-1.jpg": {
+      "commons_sha1": "cd88a84fb0ac8188c482e7d08412b86f6ba98273",
+      "thumb_sha256": "f53901a83508d16aeb32a050be5ec6d35dd9f6b31a4f8d1ab18afae0c1122fb6"
+    },
+    "wiki-explainable-artificial-intelligence-0.jpg": {
+      "commons_sha1": "d7250e7950f52714a0b58ab03593054d95bdf95c",
+      "thumb_sha256": "0bb4629ad4bd98ea1e5091b8a5d120f5128e35cc216e716414b87d3f27f8ecef"
+    },
+    "wiki-facial-recognition-system-0.jpg": {
+      "commons_sha1": "7d8581a09f15a4905b9a3695090cea2879173a25",
+      "thumb_sha256": "b66f4b7142c28e219548e5e5453547897db63427b942c1cb22fb5be2b52e0201"
+    },
+    "wiki-facial-recognition-system-1.jpg": {
+      "commons_sha1": "15eb94049ab8e7d6434a3b12a4ea04179cb478f5",
+      "thumb_sha256": "c952131a3c8c083a86fa9190db8a6f0460fb740723d6c9c5794b94aefa6f2021"
+    },
+    "wiki-facial-recognition-system-2.png": {
+      "commons_sha1": "d633b05539ee4c5cc673c3aa447243678e3beeca",
+      "thumb_sha256": "caad2e5c2656997ab4defd52e2e8d43551d78d8cb5bacf8611e6224d8a7bd33c"
+    },
+    "wiki-facial-recognition-system-3.jpg": {
+      "commons_sha1": "28a5fed5bd415533fecc2826d0be09d7f6bc3324",
+      "thumb_sha256": "12934c2ff84151ca152be4b2248ec085f41ed624da30847200af92999bac62bc"
+    },
+    "wiki-facial-recognition-system-4.jpg": {
+      "commons_sha1": "59e3596e0e9d964aba4d7e710b68cdfc3f2f2dd4",
+      "thumb_sha256": "5f0fd00e432a91d943007c58494e9b45a40507a6a59d9220d0a1745d5160cfcb"
+    },
+    "wiki-general-data-protection-regulation-0.jpg": {
+      "commons_sha1": "5e2341c1772a417d72e512379bd33d87b2c32b0b",
+      "thumb_sha256": "4a9d89bebabab1b0e8b39fb1174bd60791f52e1f1294c9e18f300f2d5f645681"
+    },
+    "wiki-general-data-protection-regulation-1.jpg": {
+      "commons_sha1": "92d107ffd19047752f51fcb8a74536ce0bdcf85d",
+      "thumb_sha256": "3888f80400980ff894a06b99e8181d6e103ad5854002d4873a0dbb92e11131c0"
+    },
+    "wiki-generative-ai-0.png": {
+      "commons_sha1": "040028c9cb5d314796b34ddaa73b1aa8b85a4ff5",
+      "thumb_sha256": "8ec37fefb72b2d12aad6c591ce945a0c4c9cb513943ef7bb7bcdbdbb449dac52"
+    },
+    "wiki-generative-ai-1.png": {
+      "commons_sha1": "7567a803f75000b3ad34e496df3b58ba5035dff3",
+      "thumb_sha256": "91383378e2f5dd9987b766cf2d860e903443e7abfb105940259f5084f2bce057"
+    },
+    "wiki-generative-ai-2.png": {
+      "commons_sha1": "0edb9f9338a5ce437fa599ba9dbe96284f715149",
+      "thumb_sha256": "fdb1516a7820f6c4935d6a8611cd6ecd317883db02e11d7ac966adbe347e8156"
+    },
+    "wiki-generative-ai-3.jpg": {
+      "commons_sha1": "b5c0613dfef288a65304763a84600581ad4886a1",
+      "thumb_sha256": "b0b17b2082fbe783d399796ffcc6d70a83508828f675592db39aa1a5546c25f9"
+    },
+    "wiki-generative-ai-4.png": {
+      "commons_sha1": "0bdeb0515f58abf13f6200d403305a809eab8a00",
+      "thumb_sha256": "a9312b4e5cb4129c8c15cd0dc80599b525f945074f929238ab1bc514f12d579f"
+    },
+    "wiki-gradient-descent-0.png": {
+      "commons_sha1": "2157ec8c999a48eb31f8001982b4d99b800f95fd",
+      "thumb_sha256": "75459302466e8df00b12451582b16030a70d2e0077825fd881a0807a45a9de74"
+    },
+    "wiki-gradient-descent-1.jpg": {
+      "commons_sha1": "75e156f12713eb171e4b2fbd27de935f68d10bf1",
+      "thumb_sha256": "5a5b472e7b5bc7a1b518953af1d3c441db9111ea59f8e593af0db9b284e7fb24"
+    },
+    "wiki-gradient-descent-2.jpg": {
+      "commons_sha1": "9f70841b198d9ca49409a9bf0ca07593248f38fa",
+      "thumb_sha256": "bddbc2b788fa77b03d1e5cbbca2679f4f83fa1a394af44ebda1d7dd0b51b9fca"
+    },
+    "wiki-gradient-descent-3.png": {
+      "commons_sha1": "902b7dc3da8bd6c99fd482249aed6bd77816c067",
+      "thumb_sha256": "4f7f45c32276ef83c8dbf856c14504006dc35fc481245ee51383f894b1cda165"
+    },
+    "wiki-history-of-artificial-intelligence-0.jpg": {
+      "commons_sha1": "a7cee5a272f62b93faa014883c073630d803d639",
+      "thumb_sha256": "0e349ed200e8c0b35582f4e574627dece75a8f7756d0152717b251bbc13ecb25"
+    },
+    "wiki-history-of-artificial-intelligence-1.jpg": {
+      "commons_sha1": "4ddd12528bab497b11a2f596b389adb5454e5b03",
+      "thumb_sha256": "d36d1af2661e128184c7773ec2f23730393cbc30f20df0a82536be8b791fd1de"
+    },
+    "wiki-history-of-artificial-intelligence-2.jpg": {
+      "commons_sha1": "4e8217c2952e4903a016c215880d219de180a15a",
+      "thumb_sha256": "7d8d74d4508d977327c3cd1d34ea8b672143c0b0541ad8c3b3c3068a6ee4f746"
+    },
+    "wiki-history-of-artificial-intelligence-3.png": {
+      "commons_sha1": "fe5635c204a51abb6aa270a048fbf62526bf7a1c",
+      "thumb_sha256": "a299308ee6f5ca27505dcbc66f4ed95c921ba6a667d32b09ea256b783f60d1d7"
+    },
+    "wiki-history-of-artificial-intelligence-4.jpg": {
+      "commons_sha1": "c30257569dbba37fea564925e3c912b85e443b73",
+      "thumb_sha256": "bea6dc69cabb952d57478df6dcdefe8c4489344e87c147bc6c1d9a41d1122ea6"
+    },
+    "wiki-imagenet-0.png": {
+      "commons_sha1": "e8c5aabfc583c7406fa923788a808b7b1f2492b4",
+      "thumb_sha256": "31f096e86ddbfd3d53e5ad8660eebd2333e162bc88dcc242b490bc2113bb5d73"
+    },
+    "wiki-large-language-model-0.png": {
+      "commons_sha1": "5dc9a488538fb806566d5949ff11818380ad80ae",
+      "thumb_sha256": "6f5d95b980265cc3bc69b8ae4bbd6add986291ead4219f6e763d974d95206744"
+    },
+    "wiki-large-language-model-1.png": {
+      "commons_sha1": "d85e18f35f17222e7e314239e09577e9603b84f7",
+      "thumb_sha256": "66adc915df0024b5ec5d60ecbe5469db638d77628f5a0995ea0143b31543fcdd"
+    },
+    "wiki-large-language-model-2.png": {
+      "commons_sha1": "822f50de5a1d7fb8ebbd0cd133577b787e3cde00",
+      "thumb_sha256": "fc2e39d8474b1b1905177d71a27507d87e3f6962ebb8bfd6b1960d8dff6ae2d3"
+    },
+    "wiki-large-language-model-3.png": {
+      "commons_sha1": "938637d3e3132f6363fad17c982b5ccc7a8707f0",
+      "thumb_sha256": "5398202028743629d95cb8e5476f2bc393c16ffdc6047417155c8db75a73b851"
+    },
+    "wiki-large-language-model-4.png": {
+      "commons_sha1": "efc34d5ca3c5a646597529697ffca1851e4e533a",
+      "thumb_sha256": "55069bf3e27625b198fb82963f31e013f36ad44ed7699127c34d411e0a01d163"
+    },
+    "wiki-machine-learning-0.png": {
+      "commons_sha1": "8381f4b16bbed799a2b2fad955fb326dcca18072",
+      "thumb_sha256": "242764eca689d3911425003871f4a5863ca84c3c6af01755f8ee561dccb2a1ab"
+    },
+    "wiki-machine-learning-1.png": {
+      "commons_sha1": "ab6d9c5fd741be9828fe302a27664fa082d29626",
+      "thumb_sha256": "99939187cb9d1b1723a3fc59ae0bc648b9b65f09c3cb1d1c9775166594f5a530"
+    },
+    "wiki-machine-learning-2.png": {
+      "commons_sha1": "084cb10c2bad504d958e601558a5a2121f8e1776",
+      "thumb_sha256": "3006804d951bf380d18f285c19414f4e8c491e07923e4b682fbf239d0acdb85b"
+    },
+    "wiki-machine-learning-3.png": {
+      "commons_sha1": "0eee66d0cd0a5f138053970755eb861caf6793db",
+      "thumb_sha256": "4492f88c58f56d2d1ecf3e06e5e6d1631c97d917c8787f4a662905d0119ef47a"
+    },
+    "wiki-machine-learning-4.png": {
+      "commons_sha1": "3f0eaab33c6944b8988ae8fff547577ddcb908af",
+      "thumb_sha256": "14c712b55ab68fd124257d932416ce5f1e3144c48f970b0ae0b80e8fa423cd6a"
+    },
+    "wiki-moore-s-law-0.png": {
+      "commons_sha1": "307261467f9874a4a73f53ce8e8a803b7b883f3b",
+      "thumb_sha256": "b13b34a69449b150ecd85408a2dedcb6a77f8eb4bf81409307604517a74a3975"
+    },
+    "wiki-moore-s-law-1.jpg": {
+      "commons_sha1": "c21214bd9f0b5cf744e89a4c4ba44914ac3bdc78",
+      "thumb_sha256": "32d2bab888d2d0096b6463027a1090f02c9172ee03bd844b2cf688fd454f9bf4"
+    },
+    "wiki-moore-s-law-2.png": {
+      "commons_sha1": "bd25dee59ee3e0fd2ebdeb7b4b34fc8e3047afb3",
+      "thumb_sha256": "19ee2bdacfe36553fbe39a3607ed3f6c4f271c422e7270f6447921a6188e075b"
+    },
+    "wiki-moore-s-law-3.gif": {
+      "commons_sha1": "aad98bdfde13a2c8cd94fe9821a77fca42e81ea3",
+      "thumb_sha256": "6b747e854b6fedc09c9d4dcd148b25302c5294eedc39ace1e3873f17450c055c"
+    },
+    "wiki-moore-s-law-4.jpg": {
+      "commons_sha1": "9181572a1604a64270ae3639145aae0f6e831577",
+      "thumb_sha256": "1dd0bd2bbca0ae33cc0a1746412883f3ca866cf86667bad06d978b43d8b9be5f"
+    },
+    "wiki-neural-network-machine-learning-0.png": {
+      "commons_sha1": "3f0eaab33c6944b8988ae8fff547577ddcb908af",
+      "thumb_sha256": "14c712b55ab68fd124257d932416ce5f1e3144c48f970b0ae0b80e8fa423cd6a"
+    },
+    "wiki-neural-network-machine-learning-1.png": {
+      "commons_sha1": "f85e994493da6b914bb76fa38e1477d65e732f80",
+      "thumb_sha256": "3dba16e788e1cdd734a7dd0b5ff1788dfd37666964d86f506d52bcfc8e479ed7"
+    },
+    "wiki-neural-network-machine-learning-2.png": {
+      "commons_sha1": "0b1a3fcb6a88321f001dac14307e52ba73379745",
+      "thumb_sha256": "4f4236655ffa81f4efd40f58198d18ed10c39be0562fa235df9280c374fa8775"
+    },
+    "wiki-neural-network-machine-learning-3.png": {
+      "commons_sha1": "c26ae8df7d9b2d15203592c83df51c9e41619de1",
+      "thumb_sha256": "da32a6eb19881f6d2c766acefe97b53e2339af9e9599ed2d4747d237b1a45990"
+    },
+    "wiki-neural-network-machine-learning-4.jpg": {
+      "commons_sha1": "99d7ce7864bf96f53ee38c1c28e5a6aeaa2063ad",
+      "thumb_sha256": "796d40e96b91d721e502bd9d13bfca1d0e9f43579831f2ccbb9e3d8d7ad3a143"
+    },
+    "wiki-regulation-of-artificial-intelligence-0.jpg": {
+      "commons_sha1": "4aeab5cada05a97fe4c6f790b921387d535aaa71",
+      "thumb_sha256": "ac82546ff92b1b0130fe039ce5aa693e3beec09b95a619fcfc57c9a1d0cf8081"
+    },
+    "wiki-regulation-of-artificial-intelligence-1.jpg": {
+      "commons_sha1": "96cc1c879d003a95b9229a7c5efcdb77b95c23b8",
+      "thumb_sha256": "b12acdce058bfaf9cbfc2f9fab4213b09e0de827d072d599a79b90097cb5006e"
+    },
+    "wiki-reinforcement-learning-0.png": {
+      "commons_sha1": "0eee66d0cd0a5f138053970755eb861caf6793db",
+      "thumb_sha256": "4492f88c58f56d2d1ecf3e06e5e6d1631c97d917c8787f4a662905d0119ef47a"
+    },
+    "wiki-retrieval-augmented-generation-0.png": {
+      "commons_sha1": "ad7ee9ed0570f7a0df53b122b93568a0576f8f84",
+      "thumb_sha256": "021654cd887410ac8802c79d4d393fe937706bd39eebe93cd43728e73d9a3027"
+    },
+    "wiki-self-driving-car-0.jpg": {
+      "commons_sha1": "102f1f6ec202ba3ba9e89fcdb4f2d3e6d76a1d24",
+      "thumb_sha256": "b51fa8d4779ddce72c969cf371aa06422ee264e3bcfb9eb1cae49a0c62375aac"
+    },
+    "wiki-self-driving-car-1.png": {
+      "commons_sha1": "fcca3aa2f2abd3c1a3242a74afec38102000bd49",
+      "thumb_sha256": "dbeb707ea42f45a0e4c8c153298fdb521cb49b786173cde18e0f35c0ff60ba6b"
+    },
+    "wiki-self-driving-car-2.jpg": {
+      "commons_sha1": "9c535c9d3b9050e2e8c7ae44d0d32b93a9f36604",
+      "thumb_sha256": "12c9eb378d1c9adecfe816fec95b3f1c46981f503c1722389189492000845891"
+    },
+    "wiki-self-driving-car-3.jpg": {
+      "commons_sha1": "bb5102884f9c48e641fe7ec5b749c82f47531854",
+      "thumb_sha256": "d8d7e5db793b2a987f2516104e957cec1ddb57a7b2ecbb84cc6f2110d0afeacf"
+    },
+    "wiki-self-driving-car-4.jpg": {
+      "commons_sha1": "7f63633e60b0629ff488c3bed701f62687cc2030",
+      "thumb_sha256": "cc70f5d776fedd301a4079f954ea4494a34d6843750d08483d2fc278ffa82be2"
+    },
+    "wiki-social-credit-system-0.png": {
+      "commons_sha1": "c0232b0d2320712ce20f57aeb8d815d35707e2db",
+      "thumb_sha256": "b99947cf7c26ba748b8605c4c8536cd2f1d884d636b150ba05fcae9e6a86e7da"
+    },
+    "wiki-transformer-deep-learning-0.png": {
+      "commons_sha1": "c958c31f7cf6307ab4d1f6ca5cc011c05179a765",
+      "thumb_sha256": "bb82c2deb6d3dc0d5e46889981c4d10cd024c71f620373577c56bac87da9edf2"
+    },
+    "wiki-transformer-deep-learning-1.png": {
+      "commons_sha1": "30020959934c13506f77626c00d8eb432155ca45",
+      "thumb_sha256": "a01897b1b7c0e1f646c56370b3442dc1e47e9921326f4e10bee1659b720de5c6"
+    },
+    "wiki-transformer-deep-learning-2.png": {
+      "commons_sha1": "3140c1484847687ee6419474ad1f14fba4a9210c",
+      "thumb_sha256": "7cf49cb2de51d1062c12db9030c9b337ba465836ef9281e93364f2beee2eab96"
+    },
+    "wiki-transformer-deep-learning-3.png": {
+      "commons_sha1": "5c6ddd1da7eea77dc66afe35e1359a8bfd8293bc",
+      "thumb_sha256": "7e8df9c632d1cf94caa243451b6b455ec1666a4490205b495087a673569a9a96"
+    },
+    "wiki-transformer-deep-learning-4.png": {
+      "commons_sha1": "4ba2370f17bfc9e5f6b868b99d5e7a5f1b212ff3",
+      "thumb_sha256": "0ab1ab8af020b504306351745a736add1df725c89d5b0505650da88c3843e780"
+    },
+    "wiki-turing-test-0.jpg": {
+      "commons_sha1": "c30257569dbba37fea564925e3c912b85e443b73",
+      "thumb_sha256": "bea6dc69cabb952d57478df6dcdefe8c4489344e87c147bc6c1d9a41d1122ea6"
+    },
+    "wiki-turing-test-1.png": {
+      "commons_sha1": "dbc969ff01b9262cccbb3b5491fa4f55d3bb9447",
+      "thumb_sha256": "63ad6e8b472f1f7fedbe4d387a904250291f06fb27594ab009193437f9c16a80"
+    },
+    "wiki-turing-test-2.png": {
+      "commons_sha1": "cc91d57f9566d4acc5030754b20fb2cbe4a72660",
+      "thumb_sha256": "b8a21009b0727de2be9008519bbe9aba418459782fa5bc88ffe23fbd18a54f53"
+    },
+    "wiki-word-embedding-0.png": {
+      "commons_sha1": "7d1280536ab089c6921424a1f6734af4e4179dd4",
+      "thumb_sha256": "232aa830de76ace2a2d0eded7d04a28342e36363659b17f40cecd34052391f0a"
+    }
+  }
+}

@@ -5,6 +5,11 @@
 Shows one candidate at a time with its source text, evidence highlighted.
 k keep · e edit then keep · d drop · s skip for now · q quit.
 
+With --suggestions, each candidate also shows an LLM reviewer's proposed
+decision (keep, edit with new wording, or drop) and its reason; a accepts it.
+You stay the reviewer: nothing reaches golden.jsonl without a keypress, and the
+log records whether you accepted the suggestion or decided yourself.
+
 Every decision is appended to eval/review_log.jsonl, so quitting loses nothing
 and the next run picks up where you stopped. Kept rows are appended to
 eval/golden.jsonl and never rewritten. A type stops being offered once it hits
@@ -68,6 +73,7 @@ class Reviewer:
         output_fn: Callable[[str], None] = print,
         preview_fn: Callable[[str], list[dict[str, Any]]] | None = None,
         targets: dict[str, int] = TARGET_MIX,
+        suggestions: dict[str, dict[str, Any]] | None = None,
     ):
         self.candidates = candidates
         self.chunks = chunks_by_id
@@ -77,6 +83,7 @@ class Reviewer:
         self.say = output_fn
         self.preview_fn = preview_fn
         self.targets = targets
+        self.suggestions = suggestions or {}
 
     def pending(self) -> list[dict[str, Any]]:
         decided = {e["candidate_id"] for e in read_log(self.log_path)}
@@ -108,16 +115,37 @@ class Reviewer:
             self.say(f"\n{BOLD}What the system retrieves (check none of these answers it):{RESET}")
             for hit in self.preview_fn(cand["question"]):
                 self.say(f"  {DIM}{hit['chunk_id']} · {hit['doc_id']} / {hit['page']}{RESET}  {hit['text'][:300]}")
+        sug = self.suggestions.get(cand["candidate_id"])
+        if sug:
+            self.say(f"\n{BOLD}Suggested: {sug['decision'].upper()}{RESET} {DIM}({sug.get('reviewer', '')}){RESET}"
+                     f"  {sug.get('note', '')}")
+            for field in ("question", "answer", "type"):
+                if sug.get(field) and sug[field] != cand[field]:
+                    self.say(f"  {BOLD}{field} →{RESET} {sug[field]}")
+
+    def _suggested(self, cand: dict[str, Any]) -> dict[str, Any]:
+        """The candidate with any suggested edits applied."""
+        final = dict(cand)
+        sug = self.suggestions.get(cand["candidate_id"]) or {}
+        if sug.get("decision") == "edit":
+            for field in ("question", "answer", "type"):
+                if sug.get(field):
+                    final[field] = sug[field]
+        if final["type"] == "unanswerable":
+            final["answer"], final["gold_chunk_ids"] = "", []
+        return final
 
     def _edit(self, cand: dict[str, Any]) -> dict[str, Any]:
-        edited = dict(cand)
-        question = self.ask(f"question [{cand['question']}]: ").strip()
-        edited["question"] = question or cand["question"]
-        if cand["type"] != "unanswerable":
-            answer = self.ask(f"answer [{cand['answer']}]: ").strip()
-            edited["answer"] = answer or cand["answer"]
-        new_type = self.ask(f"type {'/'.join(TYPES)} [{cand['type']}]: ").strip()
-        edited["type"] = new_type or cand["type"]
+        """Prompt for each field; Enter keeps the shown value (the suggestion's, if any)."""
+        start = self._suggested(cand)
+        edited = dict(start)
+        question = self.ask(f"question [{start['question']}]: ").strip()
+        edited["question"] = question or start["question"]
+        if start["type"] != "unanswerable":
+            answer = self.ask(f"answer [{start['answer']}]: ").strip()
+            edited["answer"] = answer or start["answer"]
+        new_type = self.ask(f"type {'/'.join(TYPES)} [{start['type']}]: ").strip()
+        edited["type"] = new_type or start["type"]
         if edited["type"] == "unanswerable":
             edited["answer"], edited["gold_chunk_ids"] = "", []
         return edited
@@ -146,42 +174,75 @@ class Reviewer:
             self.say("\n" + "─" * 80)
             self.say(self._header(golden, len(self.pending())))
             self._show(cand)
+            sug = self.suggestions.get(cand["candidate_id"])
+            prompt = "\n" + ("[a]ccept suggestion " if sug else "") + "[k]eep [e]dit [d]rop [s]kip [q]uit > "
             while True:
-                choice = self.ask("\n[k]eep [e]dit [d]rop [s]kip [q]uit > ").strip().lower()
+                choice = self.ask(prompt).strip().lower()
                 if choice == "q":
                     self.say(f"saved; {kept} kept this session")
                     return kept
                 if choice == "s":
                     break
+                entry = {"candidate_id": cand["candidate_id"], "reviewer": "human"}
+                if sug:
+                    entry.update(suggestion=sug["decision"], accepted=choice == "a")
+                if choice == "a" and sug:
+                    if sug["decision"] == "drop":
+                        choice = "d"
+                    else:
+                        final, decision = self._suggested(cand), sug["decision"]
+                elif choice == "k":
+                    final, decision = cand, "keep"
+                elif choice == "e":
+                    final, decision = self._edit(cand), "edit"
+                elif choice != "d":
+                    self.say("type " + ("a, " if sug else "") + "k, e, d, s or q")
+                    continue
                 if choice == "d":
-                    append_jsonl(self.log_path, {"candidate_id": cand["candidate_id"], "decision": "drop"})
+                    append_jsonl(self.log_path, {**entry, "decision": "drop"})
                     break
-                if choice in ("k", "e"):
-                    final = self._edit(cand) if choice == "e" else cand
-                    if final["type"] not in TYPES:
-                        self.say(f"{RED}unknown type {final['type']!r}{RESET}")
-                        continue
-                    if mix(golden)[final["type"]] >= self.targets[final["type"]]:
-                        self.say(f"{RED}{final['type']} is already at its target; drop or pick another type{RESET}")
-                        continue
-                    try:
-                        row = self._golden_row(final, golden)
-                    except GoldenSetError as exc:
-                        self.say(f"{RED}can't keep this as is: {exc}{RESET}")
-                        continue
-                    append_jsonl(self.golden_path, row)
-                    entry = {"candidate_id": cand["candidate_id"], "decision": "edit" if choice == "e" else "keep",
-                             "golden_id": row["id"]}
-                    if choice == "e":
-                        entry["edited"] = {k: final[k] for k in ("question", "answer", "type") if final[k] != cand[k]}
-                    append_jsonl(self.log_path, entry)
-                    kept += 1
-                    break
-                self.say("type k, e, d, s or q")
+                if final["type"] not in TYPES:
+                    self.say(f"{RED}unknown type {final['type']!r}{RESET}")
+                    continue
+                if mix(golden)[final["type"]] >= self.targets[final["type"]]:
+                    self.say(f"{RED}{final['type']} is already at its target; drop or pick another type{RESET}")
+                    continue
+                try:
+                    row = self._golden_row(final, golden)
+                except GoldenSetError as exc:
+                    self.say(f"{RED}can't keep this as is: {exc}{RESET}")
+                    continue
+                append_jsonl(self.golden_path, row)
+                entry.update(decision=decision, golden_id=row["id"])
+                edited = {k: final[k] for k in ("question", "answer", "type") if final[k] != cand[k]}
+                if edited:
+                    entry["edited"] = edited
+                append_jsonl(self.log_path, entry)
+                kept += 1
+                break
         golden = load_golden(self.golden_path)
         self.say("\n" + self._header(golden, len(self.pending())))
         self.say(f"{kept} kept this session")
         return kept
+
+    def export_packet(self, path: Path) -> int:
+        """Write every pending candidate with its source text for an offline reviewer.
+
+        Unanswerable rows carry the same top-5 retrieval preview the terminal
+        shows, so the reviewer can check nothing in the corpus answers them.
+        """
+        rows = []
+        for cand in self.pending():
+            sources = []
+            for cid in cand["source_chunk_ids"]:
+                chunk = self.chunks.get(cid, {})
+                sources.append({k: chunk.get(k) for k in ("chunk_id", "title", "heading", "text", "image")})
+            row = {**cand, "sources": sources}
+            if cand["type"] == "unanswerable" and self.preview_fn:
+                row["retrieval_preview"] = self.preview_fn(cand["question"])
+            rows.append(row)
+        path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+        return len(rows)
 
 
 def _system_preview() -> Callable[[str], list[dict[str, Any]]]:
@@ -205,12 +266,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--golden", type=Path, default=GOLDEN_PATH)
     parser.add_argument("--log", type=Path, default=LOG_PATH)
     parser.add_argument("--no-preview", action="store_true", help="don't query the index for unanswerable rows")
+    parser.add_argument("--export-packet", type=Path, help="write pending candidates for an offline reviewer")
+    parser.add_argument("--suggestions", type=Path, help="JSONL of LLM review suggestions to show per candidate")
     args = parser.parse_args(argv)
 
     chunks = {c["chunk_id"]: c for c in load_chunks()}
+    suggestions = {}
+    if args.suggestions:
+        for line in args.suggestions.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                sug = json.loads(line)
+                suggestions[sug["candidate_id"]] = sug
     reviewer = Reviewer(read_candidates(args.candidates), chunks, args.golden, args.log,
-                        preview_fn=None if args.no_preview else _system_preview())
-    reviewer.run()
+                        preview_fn=None if args.no_preview else _system_preview(), suggestions=suggestions)
+    if args.export_packet:
+        print(f"wrote {reviewer.export_packet(args.export_packet)} candidates to {args.export_packet}")
+    else:
+        reviewer.run()
     return 0
 
 

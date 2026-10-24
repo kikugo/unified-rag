@@ -26,7 +26,7 @@ class ScriptedInput:
         return self.answers.pop(0)
 
 
-class ReviewerTest(unittest.TestCase):
+class _ReviewBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
@@ -46,6 +46,8 @@ class ReviewerTest(unittest.TestCase):
                         preview, targets or {"factual": 5, "keyword": 5, "paraphrase": 5, "multihop": 5,
                                              "unanswerable": 5})
 
+
+class ReviewerTest(_ReviewBase):
     def test_keep_edit_drop_then_resume(self):
         cands = [_cand("c001"), _cand("c002"), _cand("c003"), _cand("c004")]
         # keep c001; edit c002's question; drop c003; quit at c004
@@ -92,6 +94,55 @@ class ReviewerTest(unittest.TestCase):
         self._reviewer([_cand("c001")], ["e", "", "", "unanswerable"]).run()
         row = load_golden(self.golden)[0]
         self.assertEqual((row["type"], row["gold_chunk_ids"], row["gold_answer"]), ("unanswerable", [], ""))
+
+
+class OfflineReviewTest(_ReviewBase):
+    def test_export_packet_includes_sources_and_unanswerable_preview(self):
+        cands = [_cand("c001"), _cand("c002", kind="unanswerable", gold=(), answer="")]
+        path = Path(self.tmp.name) / "packet.jsonl"
+        self.assertEqual(self._reviewer(cands, []).export_packet(path), 2)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual(rows[0]["sources"][0]["text"], CHUNKS["a1"]["text"])
+        self.assertNotIn("retrieval_preview", rows[0])
+        self.assertEqual(rows[1]["retrieval_preview"][0]["chunk_id"], "a1")
+
+    def _suggest(self, cands, answers, suggestions):
+        r = self._reviewer(cands, answers)
+        r.suggestions = suggestions
+        return r
+
+    def test_accepting_suggestions_keep_edit_drop(self):
+        cands = [_cand("c001"), _cand("c002"), _cand("c003")]
+        sugs = {
+            "c001": {"decision": "keep", "reviewer": "haiku", "note": "fine"},
+            "c002": {"decision": "edit", "question": "Better question?", "reviewer": "haiku"},
+            "c003": {"decision": "drop", "reviewer": "haiku", "note": "ambiguous"},
+        }
+        self._suggest(cands, ["a", "a", "a"], sugs).run()
+        rows = load_golden(self.golden)
+        self.assertEqual([r["question"] for r in rows], ["Question c001?", "Better question?"])
+        log = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual([e["decision"] for e in log], ["keep", "edit", "drop"])
+        self.assertTrue(all(e["accepted"] and e["reviewer"] == "human" for e in log))
+        self.assertTrue(any("Suggested: EDIT" in line for line in self.out))
+
+    def test_overriding_a_suggestion_is_recorded(self):
+        sugs = {"c001": {"decision": "drop", "reviewer": "haiku", "note": "meh"}}
+        self._suggest([_cand("c001")], ["k"], sugs).run()
+        log = json.loads(self.log.read_text().splitlines()[0])
+        self.assertEqual((log["decision"], log["suggestion"], log["accepted"]), ("keep", "drop", False))
+        self.assertEqual(len(load_golden(self.golden)), 1)
+
+    def test_edit_prefills_with_the_suggestion(self):
+        sugs = {"c001": {"decision": "edit", "question": "Suggested wording?", "reviewer": "haiku"}}
+        # Enter on every prompt keeps the suggested values
+        self._suggest([_cand("c001")], ["e", "", "", ""], sugs).run()
+        self.assertEqual(load_golden(self.golden)[0]["question"], "Suggested wording?")
+
+    def test_accept_without_a_suggestion_is_not_a_choice(self):
+        self._reviewer([_cand("c001")], ["a", "k"]).run()
+        self.assertEqual(len(load_golden(self.golden)), 1)
+        self.assertTrue(any(line.startswith("type k, e") for line in self.out))
 
 
 class HelpersTest(unittest.TestCase):

@@ -44,6 +44,11 @@ AI_ACT_SHARE = {"keyword": 0.4}
 DEFAULT_AI_ACT_SHARE = 0.25
 MIN_CHUNK_CHARS = 300
 PARAPHRASE_OVERLAP_LIMIT = 0.3
+# A chunk elsewhere in the corpus sharing at least this share of an evidence
+# quote's 5-word shingles is offered to the reviewer as a possible extra gold
+# chunk. Legal text restates itself (a recital and its article, one amendment
+# applied to several regulations), so an answer often has more than one home.
+NEAR_DUPLICATE_SHARE = 0.5
 # Paid-tier prices for the drafter, per 1M tokens (ai.google.dev/gemini-api/docs/pricing, 2026-10-24).
 PRICE_IN, PRICE_OUT = 0.75, 3.75
 EST_OUTPUT_TOKENS = 700  # answer JSON plus thinking, a deliberate overestimate
@@ -319,10 +324,44 @@ def gold_ids_for_quote(quote: str, source: dict[str, Any], page_text: str,
     return [cid for lo, hi, cid in windows if lo < e and hi > s]
 
 
+def _norm_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def shingles(text: str, n: int = 5) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+class DuplicateIndex:
+    """Finds other chunks holding an evidence quote, verbatim or nearly."""
+
+    def __init__(self, text_chunks: list[dict[str, Any]]):
+        self.chunks = text_chunks
+        self.norm = {c["chunk_id"]: _norm_ws(c["text"]) for c in text_chunks}
+        self.shingles = {c["chunk_id"]: shingles(c["text"]) for c in text_chunks}
+
+    def find(self, quote: str, exclude: set[str]) -> tuple[list[str], list[str]]:
+        """(exact copies, near copies) of `quote` outside `exclude`."""
+        q = _norm_ws(quote)
+        qs = shingles(quote)
+        exact, near = [], []
+        for cid, text in self.norm.items():
+            if cid in exclude:
+                continue
+            if q and q in text:
+                exact.append(cid)
+            elif qs and len(qs & self.shingles[cid]) / len(qs) >= NEAR_DUPLICATE_SHARE:
+                near.append(cid)
+        return exact, near
+
+
 def finalize(spec: dict[str, Any], draft: dict[str, Any], pages: dict[tuple[str, int], str],
-             chunks_by_page: dict[tuple[str, int], list[dict[str, Any]]]) -> dict[str, Any]:
+             chunks_by_page: dict[tuple[str, int], list[dict[str, Any]]],
+             duplicates: DuplicateIndex | None = None) -> dict[str, Any]:
     flags: list[str] = []
     gold: list[str] = []
+    alt: list[str] = []
     if spec["type"] != "unanswerable":
         sources_hit = set()
         for ev in draft["evidence"]:
@@ -340,6 +379,14 @@ def finalize(spec: dict[str, Any], draft: dict[str, Any], pages: dict[tuple[str,
                     gold.append(cid)
             if ids:
                 sources_hit.add(idx)
+        if duplicates and gold:
+            for ev in draft["evidence"]:
+                exact, near = duplicates.find(ev["quote"], set(gold) | set(alt))
+                for cid in exact:
+                    gold.append(cid)
+                if exact and "gold_has_exact_copy" not in flags:
+                    flags.append("gold_has_exact_copy")
+                alt.extend(cid for cid in near if cid not in gold and cid not in alt)
         if not draft["evidence"]:
             flags.append("no_evidence")
         if spec["type"] == "multihop" and len(sources_hit) < 2:
@@ -361,6 +408,7 @@ def finalize(spec: dict[str, Any], draft: dict[str, Any], pages: dict[tuple[str,
         "question": draft["question"],
         "answer": "" if spec["type"] == "unanswerable" else draft["answer"],
         "gold_chunk_ids": gold,
+        "alt_gold_candidates": alt if spec["type"] != "unanswerable" else [],
         "source_chunk_ids": [s["chunk_id"] for s in spec["sources"]],
         "evidence": draft["evidence"],
         "flags": flags,
@@ -370,9 +418,9 @@ def finalize(spec: dict[str, Any], draft: dict[str, Any], pages: dict[tuple[str,
 
 # --- csv -----------------------------------------------------------------------
 
-CSV_FIELDS = ["candidate_id", "type", "question", "answer", "gold_chunk_ids", "source_chunk_ids",
+CSV_FIELDS = ["candidate_id", "type", "question", "answer", "gold_chunk_ids", "alt_gold_candidates", "source_chunk_ids",
               "evidence", "flags", "drafter_model"]
-JSON_FIELDS = {"gold_chunk_ids", "source_chunk_ids", "evidence", "flags"}
+JSON_FIELDS = {"gold_chunk_ids", "alt_gold_candidates", "source_chunk_ids", "evidence", "flags"}
 
 
 def write_candidates(rows: list[dict[str, Any]], path: Path = CANDIDATES_PATH) -> None:
@@ -410,6 +458,7 @@ def draft_all(specs: list[dict[str, Any]], drafter: Callable[[str, list], str],
     for c in chunks:
         if c["kind"] == "text":
             chunks_by_page[(c["doc_id"], c["page"])].append(c)
+    duplicates = DuplicateIndex([c for c in chunks if c["kind"] == "text"])
     rows = []
     for spec in specs:
         raw = drafter(build_prompt(spec), image_loader(spec))
@@ -418,7 +467,7 @@ def draft_all(specs: list[dict[str, Any]], drafter: Callable[[str, list], str],
         except (ValueError, json.JSONDecodeError) as exc:
             print(f"{spec['candidate_id']}: no usable draft ({exc}), skipped")
             continue
-        rows.append(finalize(spec, draft, pages, chunks_by_page))
+        rows.append(finalize(spec, draft, pages, chunks_by_page, duplicates))
     return rows
 
 

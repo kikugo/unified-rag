@@ -5,6 +5,7 @@ from pathlib import Path
 
 from eval.draft_questions import (
     DRAFT_COUNTS,
+    DuplicateIndex,
     finalize,
     gold_ids_for_quote,
     identifiers,
@@ -144,6 +145,36 @@ class FinalizeTest(unittest.TestCase):
         self.assertIn("unanswerable_has_answer", row["flags"])
 
 
+class DuplicateTest(unittest.TestCase):
+    QUOTE = "The provider shall ensure that all appropriate corrective action is taken in respect of the AI systems."
+
+    def _chunk(self, cid, text):
+        return {"chunk_id": cid, "doc_id": "d", "page": 1, "char_offset": 0, "kind": "text", "text": text}
+
+    def test_exact_and_near_copies_are_separated(self):
+        index = DuplicateIndex([
+            self._chunk("gold", "Intro. " + self.QUOTE),
+            self._chunk("copy", "Recital text. " + self.QUOTE + " More."),
+            self._chunk("near", self.QUOTE.replace("provider", "operator")),
+            self._chunk("other", "Unrelated passage about transistor counts and Moore's law."),
+        ])
+        exact, near = index.find(self.QUOTE, exclude={"gold"})
+        self.assertEqual((exact, near), (["copy"], ["near"]))
+
+    def test_finalize_adds_exact_copies_to_gold_and_offers_near_ones(self):
+        gold_chunk = self._chunk("gold", "Intro. " + self.QUOTE)
+        copy_chunk = {**self._chunk("copy", "Recital. " + self.QUOTE), "page": 2}
+        near_chunk = {**self._chunk("near", self.QUOTE.replace("provider", "operator")), "page": 3}
+        index = DuplicateIndex([gold_chunk, copy_chunk, near_chunk])
+        spec = {"candidate_id": "c001", "type": "factual", "sources": [gold_chunk]}
+        draft = {"question": "Who must take corrective action?", "answer": "The provider",
+                 "evidence": [{"source": 1, "quote": self.QUOTE}]}
+        row = finalize(spec, draft, {("d", 1): gold_chunk["text"]}, {("d", 1): [gold_chunk]}, index)
+        self.assertEqual(row["gold_chunk_ids"], ["gold", "copy"])
+        self.assertEqual(row["alt_gold_candidates"], ["near"])
+        self.assertIn("gold_has_exact_copy", row["flags"])
+
+
 class HelpersTest(unittest.TestCase):
     def test_overlap_score(self):
         self.assertEqual(overlap_score("social scoring ban", "Article 5 bans social scoring"), 2 / 3)
@@ -159,7 +190,8 @@ class HelpersTest(unittest.TestCase):
 
     def test_csv_round_trip(self):
         rows = [{"candidate_id": "c001", "type": "factual", "question": 'He said "hi", then left',
-                 "answer": "a, b", "gold_chunk_ids": ["x", "y"], "source_chunk_ids": ["x"],
+                 "answer": "a, b", "gold_chunk_ids": ["x", "y"], "alt_gold_candidates": ["z"],
+                 "source_chunk_ids": ["x"],
                  "evidence": [{"source": 1, "quote": "line\nbreak"}], "flags": [], "drafter_model": "m"}]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "c.csv"

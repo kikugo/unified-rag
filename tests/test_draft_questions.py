@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from eval.draft_questions import (
+    DRAFT_COUNTS,
     finalize,
     gold_ids_for_quote,
     identifiers,
@@ -40,7 +41,7 @@ class SamplingTest(unittest.TestCase):
         counts = {}
         for s in a:
             counts[s["type"]] = counts.get(s["type"], 0) + 1
-        self.assertEqual(counts, {"factual": 60, "keyword": 30, "paraphrase": 30, "multihop": 16, "unanswerable": 16})
+        self.assertEqual(counts, DRAFT_COUNTS)
 
     def test_no_chunk_is_sampled_twice_and_multihop_spans_documents(self):
         specs = sample_candidates(self.chunks, seed=7)
@@ -86,6 +87,15 @@ class EvidenceTest(unittest.TestCase):
         text, chunks = _page()
         self.assertTrue(gold_ids_for_quote("Article 5  bans\nsocial scoring", chunks[0], text, chunks))
         self.assertEqual(gold_ids_for_quote("Article 6 is invented", chunks[0], text, chunks), [])
+
+    def test_repeated_sentence_resolves_to_the_source_window(self):
+        filler = " ".join(f"filler{i}" for i in range(300))
+        text = f"The measures in Article 32 apply. {filler} The measures in Article 32 apply. {filler}"
+        chunks = chunk_page("doc", 1, text)
+        later = next(c for c in chunks if c["char_offset"] > 0 and "Article 32" in c["text"])
+        ids = gold_ids_for_quote("The measures in Article 32 apply.", later, text, chunks)
+        self.assertIn(later["chunk_id"], ids)
+        self.assertNotIn(chunks[0]["chunk_id"], ids)
 
     def test_figure_quote_maps_to_the_figure(self):
         fig = {"kind": "figure", "chunk_id": "fig1"}

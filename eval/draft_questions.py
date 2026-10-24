@@ -33,7 +33,9 @@ from rag_core import bm25_rank, call_with_retry, tokenize_for_search
 
 CANDIDATES_PATH = EVAL_DIR / "candidates.csv"
 DRAFTER_MODEL = ANSWER_MODEL
-DRAFT_COUNTS = {"factual": 60, "keyword": 30, "paraphrase": 30, "multihop": 16, "unanswerable": 16}
+# Multihop is drawn at 3x its target: about two thirds of pairs turn out to share no
+# natural link, and the drafter is allowed to decline those.
+DRAFT_COUNTS = {"factual": 60, "keyword": 30, "paraphrase": 30, "multihop": 32, "unanswerable": 16}
 FIGURE_FACTUAL = 6
 AI_ACT_ID = "eu-ai-act"
 # Share of each type's draws taken from the AI Act; the rest rotate across the
@@ -94,8 +96,11 @@ TYPE_RULES = {
         "use synonyms and describe things indirectly. Names and numbers may not appear either."
     ),
     "multihop": (
-        "Ask a question that can only be answered by combining a fact from SOURCE 1 with a fact from SOURCE 2. "
-        "Give one evidence quote from each source."
+        "Ask a question that can only be answered by combining a fact from SOURCE 1 with a fact from SOURCE 2, "
+        "where combining them has a real reason: a comparison of two comparable things, a cause in one and its "
+        "effect in the other, an entity named in one and described in the other, or a rule in one applied to a "
+        "case in the other. Never join two unrelated facts with 'and'. Give one evidence quote from each source. "
+        "If the sources share no natural link, return an empty question and empty evidence."
     ),
     "unanswerable": (
         "Ask a natural, specific question on this source's topic whose answer is NOT in the source and is "
@@ -163,7 +168,7 @@ def _draw(rng: random.Random, by_doc: dict[str, list[dict]], kind: str, n: int,
 
 def _partner(seed: dict[str, Any], text_chunks: list[dict[str, Any]], used: set[str]) -> dict[str, Any] | None:
     """Best BM25 match for the seed's topic from a different document."""
-    query = f"{seed['heading']} {' '.join(seed['text'].split()[:30])}"
+    query = " ".join(seed["text"].split()[:80])
     docs = [{"id": c["chunk_id"], "searchable_text": c["searchable_text"]}
             for c in text_chunks if c["doc_id"] != seed["doc_id"] and c["chunk_id"] not in used
             and len(c["text"]) >= MIN_CHUNK_CHARS]
@@ -276,16 +281,18 @@ def load_page_texts(corpus_dir: Path = CORPUS_DIR) -> dict[tuple[str, int], str]
     return pages
 
 
-def _find_span(quote: str, text: str) -> tuple[int, int] | None:
-    start = text.find(quote)
+def _find_span(quote: str, text: str, lo: int = 0, hi: int | None = None) -> tuple[int, int] | None:
+    """Where `quote` sits in text[lo:hi], as absolute offsets into `text`."""
+    region = text[lo:hi]
+    start = region.find(quote)
     if start >= 0:
-        return start, start + len(quote)
+        return lo + start, lo + start + len(quote)
     words = quote.split()
     if not words:
         return None
     # Tolerate whitespace differences (a newline between sections, double spaces).
-    match = re.search(r"\s+".join(re.escape(w) for w in words), text)
-    return (match.start(), match.end()) if match else None
+    match = re.search(r"\s+".join(re.escape(w) for w in words), region)
+    return (lo + match.start(), lo + match.end()) if match else None
 
 
 def gold_ids_for_quote(quote: str, source: dict[str, Any], page_text: str,
@@ -298,7 +305,10 @@ def gold_ids_for_quote(quote: str, source: dict[str, Any], page_text: str,
     """
     if source["kind"] == "figure":
         return [source["chunk_id"]]
-    span = _find_span(quote, page_text)
+    # Search the window the drafter actually read first: legal text repeats
+    # sentences, and the first match on the page can sit in a different window.
+    lo = source.get("char_offset", 0)
+    span = _find_span(quote, page_text, lo, lo + len(source.get("text", ""))) or _find_span(quote, page_text)
     if span is None:
         return []
     s, e = span
@@ -406,7 +416,7 @@ def draft_all(specs: list[dict[str, Any]], drafter: Callable[[str, list], str],
         try:
             draft = parse_draft(raw)
         except (ValueError, json.JSONDecodeError) as exc:
-            print(f"{spec['candidate_id']}: unusable draft ({exc}), skipped")
+            print(f"{spec['candidate_id']}: no usable draft ({exc}), skipped")
             continue
         rows.append(finalize(spec, draft, pages, chunks_by_page))
     return rows

@@ -37,6 +37,9 @@ DRAFTER_MODEL = ANSWER_MODEL
 # natural link, and the drafter is allowed to decline those.
 DRAFT_COUNTS = {"factual": 60, "keyword": 30, "paraphrase": 30, "multihop": 32, "unanswerable": 16}
 FIGURE_FACTUAL = 6
+# A later multihop batch, drawn after everything above from its own seeded RNG so
+# adding it leaves every earlier candidate id and its reviews unchanged.
+EXTRA_MULTIHOP = 32
 AI_ACT_ID = "eu-ai-act"
 # Share of each type's draws taken from the AI Act; the rest rotate across the
 # Wikipedia articles. Identifier questions lean on the regulation's numbering.
@@ -185,7 +188,8 @@ def _partner(seed: dict[str, Any], text_chunks: list[dict[str, Any]], used: set[
 
 
 def sample_candidates(chunks: list[dict[str, Any]], seed: int = 7,
-                      counts: dict[str, int] = DRAFT_COUNTS) -> list[dict[str, Any]]:
+                      counts: dict[str, int] = DRAFT_COUNTS,
+                      extra_multihop: int = EXTRA_MULTIHOP) -> list[dict[str, Any]]:
     """Deterministic list of candidate specs: {candidate_id, type, sources}."""
     rng = random.Random(seed)
     text_chunks = [c for c in chunks if c["kind"] == "text"]
@@ -204,11 +208,15 @@ def sample_candidates(chunks: list[dict[str, Any]], seed: int = 7,
         n = counts.get(kind, 0) - (sum(1 for s in specs if s["type"] == kind))
         specs.extend({"type": kind, "sources": [c]} for c in _draw(rng, by_doc, kind, n, used))
 
-    for seed_chunk in _draw(rng, by_doc, "multihop", counts.get("multihop", 0), used):
-        partner = _partner(seed_chunk, text_chunks, used)
-        if partner:
-            used.add(partner["chunk_id"])
-            specs.append({"type": "multihop", "sources": [seed_chunk, partner]})
+    def add_pairs(draw_rng: random.Random, n: int) -> None:
+        for seed_chunk in _draw(draw_rng, by_doc, "multihop", n, used):
+            partner = _partner(seed_chunk, text_chunks, used)
+            if partner:
+                used.add(partner["chunk_id"])
+                specs.append({"type": "multihop", "sources": [seed_chunk, partner]})
+
+    add_pairs(rng, counts.get("multihop", 0))
+    add_pairs(random.Random(seed * 1000 + 1), extra_multihop)
 
     for n, spec in enumerate(specs, start=1):
         spec["candidate_id"] = f"c{n:03d}"

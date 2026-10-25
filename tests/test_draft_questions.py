@@ -5,6 +5,7 @@ from pathlib import Path
 
 from eval.draft_questions import (
     DRAFT_COUNTS,
+    EXTRA_MULTIHOP,
     DuplicateIndex,
     finalize,
     gold_ids_for_quote,
@@ -42,7 +43,15 @@ class SamplingTest(unittest.TestCase):
         counts = {}
         for s in a:
             counts[s["type"]] = counts.get(s["type"], 0) + 1
-        self.assertEqual(counts, DRAFT_COUNTS)
+        self.assertEqual(counts, {**DRAFT_COUNTS, "multihop": DRAFT_COUNTS["multihop"] + EXTRA_MULTIHOP})
+
+    def test_extra_multihop_batch_leaves_earlier_candidates_unchanged(self):
+        def key(specs):
+            return [(s["candidate_id"], s["type"], [c["chunk_id"] for c in s["sources"]]) for s in specs]
+        without = sample_candidates(self.chunks, seed=7, extra_multihop=0)
+        with_extra = sample_candidates(self.chunks, seed=7)
+        self.assertEqual(key(with_extra)[:len(without)], key(without))
+        self.assertTrue(all(s["type"] == "multihop" for s in with_extra[len(without):]))
 
     def test_no_chunk_is_sampled_twice_and_multihop_spans_documents(self):
         specs = sample_candidates(self.chunks, seed=7)

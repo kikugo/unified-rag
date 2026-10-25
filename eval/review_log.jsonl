@@ -1,0 +1,137 @@
+{"candidate_id": "c001", "reviewer": "human", "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g001"}
+{"candidate_id": "c002", "reviewer": "human", "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g002"}
+{"candidate_id": "c003", "reviewer": "human", "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g003"}
+{"candidate_id": "c004", "reviewer": "human", "suggestion": "drop", "accepted": false, "decision": "drop"}
+{"candidate_id": "c005", "reviewer": "human", "suggestion": "edit", "accepted": false, "decision": "edit", "golden_id": "g004", "edited": {"question": "Which US state is listed as having a mandatory USB-C power port regulation as of 2026?", "answer": "California."}}
+{"candidate_id": "c006", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g005", "edited": {"question": "Which product is used as an example of safety product testing in an anechoic chamber?"}}
+{"candidate_id": "c007", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g006"}
+{"candidate_id": "c008", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g007", "edited": {"question": "Why should certain AI systems used for democratic processes and the administration of justice be classified as high-risk under the EU Artificial Intelligence Act?"}}
+{"candidate_id": "c009", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g008", "edited": {"question": "For the Commission's evaluations and reviews under the EU Artificial Intelligence Act, which entities must provide it with information on request?"}}
+{"candidate_id": "c010", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g009"}
+{"candidate_id": "c011", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g010", "edited": {"question": "Under the EU Artificial Intelligence Act, which campaign-related tools are excluded from the category of AI systems intended to influence election outcomes?"}}
+{"candidate_id": "c012", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g011", "edited": {"question": "Under the EU Artificial Intelligence Act, what action have national data protection authorities already taken regarding remote biometric identification for purposes other than law enforcement?"}}
+{"candidate_id": "c013", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g012"}
+{"candidate_id": "c014", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g013", "edited": {"question": "Under the EU Artificial Intelligence Act, what procedure must the Commission apply to the harmonised standards or common specifications referred to in Articles 40 and 41?"}}
+{"candidate_id": "c015", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g014", "edited": {"question": "Under the amendment to Directive 2014/90/EU for AI safety components, which requirements must the Commission take into account when adopting technical specifications and testing standards?", "answer": "The requirements set out in Chapter III, Section 2, of Regulation (EU) 2024/1689."}}
+{"candidate_id": "c016", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g015"}
+{"candidate_id": "c017", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g016"}
+{"candidate_id": "c018", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g017"}
+{"candidate_id": "c019", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g018"}
+{"candidate_id": "c020", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g019"}
+{"candidate_id": "c021", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g020"}
+{"candidate_id": "c022", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g021"}
+{"candidate_id": "c023", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g022"}
+{"candidate_id": "c024", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g023"}
+{"candidate_id": "c025", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g024"}
+{"candidate_id": "c026", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g025", "edited": {"question": "According to Purnhagen and Wesseler's analysis, what factor gives the EU Ecodesign framework greater capacity than the deforestation regulation to influence production outside the EU?", "answer": "Integrated trade in chemicals."}}
+{"candidate_id": "c027", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g026"}
+{"candidate_id": "c028", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g027"}
+{"candidate_id": "c029", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g028"}
+{"candidate_id": "c030", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g029"}
+{"candidate_id": "c031", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g030"}
+{"candidate_id": "c032", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g031", "edited": {"answer": "2017."}}
+{"candidate_id": "c033", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g032"}
+{"candidate_id": "c034", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g033"}
+{"candidate_id": "c035", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g034"}
+{"candidate_id": "c036", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g035"}
+{"candidate_id": "c037", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g036"}
+{"candidate_id": "c038", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g037"}
+{"candidate_id": "c039", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g038"}
+{"candidate_id": "c040", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g039"}
+{"candidate_id": "c041", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g040", "edited": {"answer": "The manifold hypothesis."}}
+{"candidate_id": "c061", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g041"}
+{"candidate_id": "c062", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g042"}
+{"candidate_id": "c063", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g043", "edited": {"question": "For AI systems used by regulated financial institutions, what enforcement powers do competent authorities hold under Regulation (EU) 2019/1020?"}}
+{"candidate_id": "c064", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g044"}
+{"candidate_id": "c065", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g045"}
+{"candidate_id": "c066", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g046"}
+{"candidate_id": "c067", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g047"}
+{"candidate_id": "c068", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g048"}
+{"candidate_id": "c069", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g049"}
+{"candidate_id": "c070", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g050"}
+{"candidate_id": "c071", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g051"}
+{"candidate_id": "c072", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g052"}
+{"candidate_id": "c073", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g053"}
+{"candidate_id": "c074", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g054"}
+{"candidate_id": "c075", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g055", "edited": {"answer": "Records of processing activities must include documentation of suitable safeguards for transfers under the second subparagraph of Article 49(1)."}}
+{"candidate_id": "c076", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g056"}
+{"candidate_id": "c077", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g057"}
+{"candidate_id": "c078", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g058"}
+{"candidate_id": "c079", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g059"}
+{"candidate_id": "c080", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g060", "edited": {"answer": "CVDazzle is outdated because it was designed to combat one particular facial recognition algorithm, so according to its creators it may not work against newer software or other model types."}}
+{"candidate_id": "c084", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c091", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g061"}
+{"candidate_id": "c092", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c093", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g062", "edited": {"question": "If a frontier AI system causes a grave accident even though its maker tried to head off the dangers, what is the maker supposed to do?", "answer": "The provider should keep track of the incident without undue delay and report relevant information and possible corrective measures to the Commission and national competent authorities."}}
+{"candidate_id": "c094", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c095", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g063", "edited": {"question": "Why are tools that only confirm that someone is who they say they are treated differently from tools that identify people without their involvement?", "answer": "They are excluded from the definition of remote biometric identification because they are likely to have a smaller effect on fundamental rights than systems that process biometric data of many people without their active involvement."}}
+{"candidate_id": "c096", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g064", "edited": {"question": "What background must the outside specialists on the oversight advisory body have, and how must they behave while working?", "answer": "They must be selected for up-to-date scientific or technical expertise in artificial intelligence, and must act with impartiality and objectivity while keeping the information and data they obtain confidential."}}
+{"candidate_id": "c097", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g065", "edited": {"question": "Which EU regulation sets the rules for certifying and checking machines used on farms and in forests?", "answer": "Regulation (EU) No 167/2013 sets the approval and market surveillance rules for agricultural and forestry vehicles."}}
+{"candidate_id": "c098", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g066", "edited": {"question": "What requirement applies to the language used in the compliance documents that designated assessment bodies issue?", "answer": "The certificates must be drawn up in a language that the authorities of the Member State where the notified body is established can easily understand."}}
+{"candidate_id": "c099", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g067", "edited": {"question": "Why does a neural network need written input to be encoded in a different form before it can process it?", "answer": "Because the transformer architecture natively performs operations over numbers, such as matrix multiplications and dot products, rather than over text, input text must first be mapped to a numerical representation."}}
+{"candidate_id": "c100", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g068", "edited": {"question": "Which London police force secretly handed photographs of several people to a private firm for a camera-based identification scheme?", "answer": "The Metropolitan Police passed photos of seven people to Argent, the company running the King's Cross system, under a secret deal."}}
+{"candidate_id": "c101", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g069", "edited": {"question": "Once most people were online, where did scientists find enough writing to teach probabilistic word predictors?", "answer": "They compiled massive text datasets from the web, treating the web itself as a corpus."}}
+{"candidate_id": "c102", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g070", "edited": {"question": "Where can self-steering cars be evaluated?", "answer": "Through digital simulations, in a controlled test environment, or on public roads."}}
+{"candidate_id": "c103", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g071", "edited": {"question": "What kind of artificially generated data could train algorithms without exposing people's personal details?"}}
+{"candidate_id": "c104", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g072", "edited": {"question": "What is the name for the gap between a learning system's performance and that of a perfect decision-maker?"}}
+{"candidate_id": "c105", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g073", "edited": {"question": "In the reduced set of labels for the yearly computer-vision contest, how many sorts of dog survive?"}}
+{"candidate_id": "c106", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g074", "edited": {"question": "Which legal academic predicted that the EU's platform rules would shape other countries' rules the way its privacy law has, but only over several years?", "answer": "Suzanne Vergnolle of the Conservatoire national des arts et métiers, who said in 2023 that the Digital Services Act would have an effect similar to the General Data Protection Regulation, though it would take years."}}
+{"candidate_id": "c107", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g075", "edited": {"question": "How does randomly switching off parts of a neural network during training help stop it from picking up on unusual patterns?"}}
+{"candidate_id": "c108", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g076", "edited": {"question": "How did highlighting a national citizen-scoring program's repressive side affect support for it among college students?", "answer": "In a 2022 field survey of Chinese college students, revealing the program's repressive potential significantly reduced support, while emphasizing its role in maintaining social order did not increase support."}}
+{"candidate_id": "c109", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g077", "edited": {"question": "In 2024, what share of recorded impersonation fraud cases involved machine-generated fakes?"}}
+{"candidate_id": "c110", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c111", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g078", "edited": {"question": "What persistent difficulties do reviews report for language models that draw on outside sources in medicine?", "answer": "Reviews report continuing challenges around evaluation, ethics, and clinical reliability."}}
+{"candidate_id": "c112", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g079", "edited": {"answer": "The idea, called transhumanism, has roots in the writings of Aldous Huxley and Robert Ettinger."}}
+{"candidate_id": "c113", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g080", "edited": {"question": "Why did European regulators block a large proposed takeover in the aircraft engine business?"}}
+{"candidate_id": "c114", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c121", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g081"}
+{"candidate_id": "c122", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g082"}
+{"candidate_id": "c123", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g083"}
+{"candidate_id": "c124", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g084"}
+{"candidate_id": "c125", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g085"}
+{"candidate_id": "c126", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g086"}
+{"candidate_id": "c127", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g087"}
+{"candidate_id": "c128", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g088"}
+{"candidate_id": "c129", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g089"}
+{"candidate_id": "c130", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g090"}
+{"candidate_id": "c135", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c137", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g091", "edited": {"answer": "Violating the prohibitions in Article 5 can be fined up to EUR 35,000,000 or, for an undertaking, up to 7% of total worldwide annual turnover, whichever is higher. Failing to comply with a request for information under Article 91 can lead the Commission to fine a general-purpose AI model provider up to EUR 15,000,000 or 3% of annual total worldwide turnover, whichever is higher, where the provider acted intentionally or negligently."}}
+{"candidate_id": "c138", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c139", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c140", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c141", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g092", "edited": {"question": "Would a remote biometric identification system used exclusively for military purposes be classified as a high-risk AI system under the EU AI Act?", "answer": "No. Remote biometric identification systems are listed in Annex III as high-risk AI systems insofar as their use is permitted under relevant Union or national law, but the AI Act does not apply where an AI system is used exclusively for military, defence or national security purposes."}}
+{"candidate_id": "c142", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c143", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c144", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c145", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c147", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g093", "edited": {"answer": "High-risk AI systems that are only provided digitally should bear a digital CE marking. The CE marking consists of the CE letter pair and, where applicable, the four-digit identification number of the notified body involved in the conformity assessment procedure."}}
+{"candidate_id": "c149", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g094"}
+{"candidate_id": "c150", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c151", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c152", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c153", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c154", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c155", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c157", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c158", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g095"}
+{"candidate_id": "c159", "reviewer": "human", "batch": true, "suggestion": "edit", "accepted": true, "decision": "edit", "golden_id": "g096", "edited": {"answer": "While automated emotion recognition research since the 1970s has focused on facial expressions and speech, accuracy is usually improved by combining analysis across multimodal forms such as texts, physiology, audio or video."}}
+{"candidate_id": "c160", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g097"}
+{"candidate_id": "c161", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c162", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c164", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c165", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c167", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c168", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c170", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c171", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c172", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c173", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c174", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c175", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g098"}
+{"candidate_id": "c176", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c177", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c178", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c179", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g099"}
+{"candidate_id": "c180", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c181", "reviewer": "human", "batch": true, "suggestion": "drop", "accepted": true, "decision": "drop"}
+{"candidate_id": "c182", "reviewer": "human", "batch": true, "suggestion": "keep", "accepted": true, "decision": "keep", "golden_id": "g100"}

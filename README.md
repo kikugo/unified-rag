@@ -104,7 +104,17 @@ uv run python -m rag.cli "Which AI practices does Article 5 prohibit?" --mode hy
 
 The CLI prints each hit's chunk id with its dense, BM25, RRF and rerank scores. Add `--answer` for a cited answer, or `--hyde` to embed a drafted answer alongside the question. Reranking is a local cross-encoder (`ms-marco-MiniLM-L-6-v2` through fastembed's ONNX runtime), so it needs no API key.
 
-Chunk ids are a hash of document id, page (or section), character offset and kind, so rebuilding the index from the same text gives the same ids. Embeddings are cached in `.cache/`, which makes a rebuild free. `uv run python -m rag.index verify-stable` checks both: it deletes the index, rebuilds it and confirms every ranking comes back identical.
+Chunk ids are a hash of document id, page (or section), character offset and kind, so rebuilding the index from the same text gives the same ids. `uv run python -m rag.index verify-stable` proves it: it deletes the index, rebuilds it and checks every ranking comes back identical.
+
+## Golden set
+
+The eval questions in `eval/golden.jsonl` were drafted by an LLM, checked by two other LLMs, and approved by me. Nothing goes into the set without that approval.
+
+1. `uv run python -m eval.draft_questions` samples chunks across every document in the corpus (seeded, so the sample is reproducible) and asks `gemini-3.6-flash` for one question per chunk, plus the answer and a verbatim evidence quote. Question types are factual lookups, exact-identifier questions (article numbers, names, codes), paraphrases that avoid the source's wording, two-source multihop questions, and questions the corpus can't answer.
+2. Gold chunk ids come from where the evidence quote actually sits in the corpus, not from which chunk happened to be sampled. Chunks overlap, so a quote in the overlap makes both chunks gold. A quote that can't be found verbatim gets flagged rather than guessed. Legal text restates itself (a recital and its article, one amendment applied to several regulations), so an exact copy of the quote anywhere else in the corpus is gold too, and near-copies are shown during review so I can add them if they answer the question. Otherwise a retriever that finds the article instead of the recital would be scored as a miss.
+3. Two independent LLM passes (Claude Haiku 5.5 and Claude Sonnet 5.5, spot-checked by a larger Claude model) proposed keep, edit or drop for every candidate, with a one-line reason each (`eval/review_suggestions.jsonl`). I decided the first rows one at a time in `uv run python -m eval.review`, then read through the remaining suggestions and approved them as a batch, leaving out multihop pairs the two models disagreed on. `eval/review_log.jsonl` marks which rows were decided individually and which by batch approval. Kept rows are appended and never rewritten.
+
+Known bias in this method: each question is written by a model reading one chunk, so questions lean toward that chunk's vocabulary. That flatters lexical and dense retrieval of exactly that chunk. The paraphrase type pushes against it (candidates whose wording overlaps the source too much are flagged), but doesn't remove it. The drafter is also the same model family as the answer generator, so generation metrics are judged by a model from a different family. Embeddings are cached in `.cache/`, which makes a rebuild free. `uv run python -m rag.index verify-stable` checks both: it deletes the index, rebuilds it and confirms every ranking comes back identical.
 
 ## Notes to self: what's left
 

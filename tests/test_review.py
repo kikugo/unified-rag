@@ -174,6 +174,19 @@ class OfflineReviewTest(_ReviewBase):
         self._reviewer([cand], ["k"]).run()
         self.assertEqual(load_golden(self.golden)[0]["gold_chunk_ids"], ["a1"])
 
+    def test_batch_approval_applies_suggestions_within_targets(self):
+        cands = [_cand("c001"), _cand("c002"), _cand("c003"), _cand("c004")]
+        sugs = {"c001": {"decision": "drop"}, "c002": {"decision": "edit", "question": "New?"},
+                "c003": {"decision": "keep"}, "c004": {"decision": "keep"}}
+        targets = {"factual": 2, "keyword": 0, "paraphrase": 0, "multihop": 0, "unanswerable": 0}
+        r = self._suggest(cands, [], sugs)
+        r.targets = targets
+        self.assertEqual(r.approve_suggestions(), 2)
+        self.assertEqual([x["question"] for x in load_golden(self.golden)], ["New?", "Question c003?"])
+        log = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertTrue(all(e["batch"] for e in log))
+        self.assertEqual([e["candidate_id"] for e in log], ["c001", "c002", "c003"])  # c004: type full, pending
+
     def test_accept_without_a_suggestion_is_not_a_choice(self):
         self._reviewer([_cand("c001")], ["a", "k"]).run()
         self.assertEqual(len(load_golden(self.golden)), 1)

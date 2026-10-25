@@ -279,6 +279,40 @@ class Reviewer:
         self.say(f"{kept} kept this session")
         return kept
 
+    def approve_suggestions(self) -> int:
+        """Apply every pending candidate's main suggestion, as a batch approval.
+
+        For when the reviewer has read the suggestions file and approves it as a
+        whole. It goes through the same validation and targets as `run`, and each
+        log entry is marked `"batch": true` so it can be told apart from rows
+        decided one at a time. Near-copy alternates are never added here.
+        """
+        kept = 0
+        for cand in self.pending():
+            sug = self.suggestions.get(cand["candidate_id"])
+            golden = load_golden(self.golden_path)
+            if not sug or len(golden) >= sum(self.targets.values()):
+                continue
+            entry = {"candidate_id": cand["candidate_id"], "reviewer": "human", "batch": True,
+                     "suggestion": sug["decision"], "accepted": True}
+            if sug["decision"] == "drop":
+                append_jsonl(self.log_path, {**entry, "decision": "drop"})
+                continue
+            final = self._suggested(cand)
+            if final["type"] not in TYPES or mix(golden)[final["type"]] >= self.targets[final["type"]]:
+                continue  # type full: left pending, not logged
+            try:
+                row = self._golden_row(final, golden)
+            except GoldenSetError as exc:
+                append_jsonl(self.log_path, {**entry, "decision": "drop", "note": f"invalid: {exc}"})
+                continue
+            append_jsonl(self.golden_path, row)
+            edited = {k: final[k] for k in ("question", "answer", "type") if final[k] != cand[k]}
+            append_jsonl(self.log_path, {**entry, "decision": sug["decision"], "golden_id": row["id"],
+                                         **({"edited": edited} if edited else {})})
+            kept += 1
+        return kept
+
     def export_packet(self, path: Path) -> int:
         """Write every pending candidate with its source text for an offline reviewer.
 
@@ -321,6 +355,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log", type=Path, default=LOG_PATH)
     parser.add_argument("--no-preview", action="store_true", help="don't query the index for unanswerable rows")
     parser.add_argument("--export-packet", type=Path, help="write pending candidates for an offline reviewer")
+    parser.add_argument("--approve-suggestions", action="store_true",
+                        help="apply every pending main suggestion as a batch approval (needs --suggestions)")
     parser.add_argument("--suggestions", type=Path, help="JSONL of LLM review suggestions to show per candidate")
     args = parser.parse_args(argv)
 
@@ -335,6 +371,10 @@ def main(argv: list[str] | None = None) -> int:
                         preview_fn=None if args.no_preview else _system_preview(), suggestions=suggestions)
     if args.export_packet:
         print(f"wrote {reviewer.export_packet(args.export_packet)} candidates to {args.export_packet}")
+    elif args.approve_suggestions:
+        kept = reviewer.approve_suggestions()
+        golden = load_golden(args.golden)
+        print(f"kept {kept}; golden set now {len(golden)} rows: {mix(golden)}")
     else:
         reviewer.run()
     return 0

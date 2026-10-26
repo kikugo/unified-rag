@@ -116,6 +116,21 @@ The eval questions in `eval/golden.jsonl` were drafted by an LLM, checked by two
 
 Known bias in this method: each question is written by a model reading one chunk, so questions lean toward that chunk's vocabulary. That flatters lexical and dense retrieval of exactly that chunk. The paraphrase type pushes against it (candidates whose wording overlaps the source too much are flagged), but doesn't remove it. The drafter is also the same model family as the answer generator, so generation metrics are judged by a model from a different family. Embeddings are cached in `.cache/`, which makes a rebuild free. `uv run python -m rag.index verify-stable` checks both: it deletes the index, rebuilds it and confirms every ranking comes back identical.
 
+## Metrics
+
+`uv run python -m eval.run --config <name>` runs the golden set through one config in `eval/configs/` and writes `results/<name>.json`: every question's ranked chunk ids, answer, scores and latency, plus totals overall and per question type.
+
+- **Retrieval** (answerable rows only): hit@1, hit@3 and hit@5 (is any gold chunk in the top k), MRR@10, and recall@5, which matters for multihop questions with two gold chunks. Retrieval is scored at depth 10, and the answer sees the top `context_k` hits.
+- **Citations**: the share of `[S1]`-style citations that point at a gold chunk. Answers with no citation are counted separately, not as correct. A cited chunk that supports the claim but isn't in the gold set counts as wrong, so this is a lower bound.
+- **Faithfulness and answer relevancy**: DeepEval's metrics, judged by `gpt-4.1-mini` version `2025-04-14` on Azure AI Foundry at temperature 0. The judge is a different model family from the `gemini-3.6-flash` generator. Both run on answerable questions the system didn't refuse.
+- **Refusals**: on unanswerable questions, how often the system says the sources don't contain the answer. On answerable ones, how often it refuses anyway. The judge decides what counts as a refusal.
+- **Latency, tokens and cost**: p50 and p95 per stage (query embedding plus search, rerank, generation), with cost per query from `eval/prices.json`. Judge cost is reported separately, since it isn't part of answering.
+- **95% bootstrap intervals** for hit@5 and faithfulness, because 100 questions is a small sample.
+
+Every API call (answers, judge verdicts, query embeddings) is cached in `.cache/` with the latency and tokens of the original call. A rerun is free and reports the same numbers. The benchmark's dense search is an exact cosine scan instead of Chroma's approximate HNSW index. HNSW sometimes dropped a true neighbour from the candidate pool, a different one from process to process, so a rerun could change the score with nothing changed. The judge needs `JUDGE_ENDPOINT` (a Foundry resource) and an `az login` session with access to it; `--no-judge` skips it.
+
+What these metrics miss: faithfulness only checks that the answer agrees with the retrieved text, so a faithful answer built on the wrong chunk still scores well. That's why it's reported next to hit@k and citation correctness, not alone. Figures reach the judge as their caption, since DeepEval's judge here is text-only, so an answer read off the image itself can score lower than it deserves. The judge also makes mistakes of its own. Reading through the flagged rows turned up answers it called refusals that weren't, and near-verbatim answers it marked unfaithful. I kept DeepEval's default prompts rather than tune them until the scores looked better, so treat single-row judge scores as noisy and read the totals with their intervals.
+
 ## Notes to self: what's left
 
 My professor reviewed the codebase a while back and pointed out a pile of real embarrassments. Most of that list is gone now. Retrieval is hybrid BM25+RRF with top-K context. Audio and video get transcribed. MP3 decodes properly, re-uploads dedupe by content hash, each file is one source row, citations seek to the right spot, and the corpus survives a restart. There's even a recall@k test on a seeded corpus so I can tell when I break something.

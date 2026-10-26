@@ -136,8 +136,8 @@ def open_collection(index_dir: Path = INDEX_DIR, dim: int = DEFAULT_DIM, create:
     return client.get_collection(collection_name(dim))
 
 
-def open_store(index_dir: Path = INDEX_DIR, dim: int = DEFAULT_DIM) -> ChromaStore:
-    return ChromaStore(open_collection(index_dir, dim))
+def open_store(index_dir: Path = INDEX_DIR, dim: int = DEFAULT_DIM, exact: bool = False) -> ChromaStore:
+    return ChromaStore(open_collection(index_dir, dim), exact=exact)
 
 
 def build_index(chunks: list[dict[str, Any]], embedder, index_dir: Path = INDEX_DIR,

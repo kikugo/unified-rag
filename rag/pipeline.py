@@ -5,6 +5,7 @@ an ablation row measures the code the app ships, not a copy of it.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -69,12 +70,20 @@ class ChromaStore:
     The BM25 side scans every chunk's `searchable_text`, so the full listing is
     fetched once per store and reused. The app builds a fresh store per search
     because its corpus changes between queries; the CLI keeps one.
+
+    `exact=True` replaces Chroma's approximate HNSW search with an exact cosine
+    scan over the stored vectors. HNSW occasionally drops a true neighbour from
+    the candidate pool, and not the same one every process, so a benchmark rerun
+    could rank differently with nothing changed. The eval index is small enough
+    that the exact scan costs a few milliseconds.
     """
 
-    def __init__(self, collection, where: dict | None = None):
+    def __init__(self, collection, where: dict | None = None, exact: bool = False):
         self.collection = collection
         self.where = where
+        self.exact = exact
         self._metas: dict[str, dict[str, Any]] | None = None
+        self._matrix: tuple[list[str], np.ndarray] | None = None
 
     def _corpus(self) -> dict[str, dict[str, Any]]:
         if self._metas is None:
@@ -95,10 +104,26 @@ class ChromaStore:
     def sparse_docs(self) -> list[dict[str, Any]]:
         return [{"id": i, "searchable_text": self.text(i)} for i in self._corpus()]
 
+    def _normalized_vectors(self) -> tuple[list[str], np.ndarray]:
+        if self._matrix is None:
+            got = self.collection.get(where=self.where, include=["embeddings"])
+            ids = list(got.get("ids") or [])
+            matrix = np.asarray(got.get("embeddings"), dtype=np.float64).reshape(len(ids), -1)
+            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+            self._matrix = ids, matrix / np.where(norms == 0, 1.0, norms)
+        return self._matrix
+
     def dense(self, vector: np.ndarray, n: int) -> list[tuple[str, float]]:
         n = min(n, self.count())
         if n <= 0:
             return []
+        if self.exact:
+            ids, matrix = self._normalized_vectors()
+            q = np.asarray(vector, dtype=np.float64)
+            sims = matrix @ (q / (np.linalg.norm(q) or 1.0))
+            # ties broken by chunk id, so the order never depends on storage order
+            order = np.lexsort((np.asarray(ids), -sims))[:n]
+            return [(ids[j], float(sims[j])) for j in order]
         res = self.collection.query(
             query_embeddings=[np.asarray(vector).tolist()],
             n_results=n,
@@ -145,16 +170,22 @@ def retrieve(
     embedder: Embedder | None = None,
     reranker: Reranker | None = None,
     query_emb: np.ndarray | None = None,
+    timings: dict[str, float] | None = None,
 ) -> list[Hit]:
     """Top `cfg.top_k` chunks for a question under one config.
 
     `query_emb` skips query embedding (the app's image search passes one). With
     no question text the BM25 arm has nothing to match, so hybrid falls back to
     the dense order, which is what the app always did for image queries.
+
+    Pass a dict as `timings` to get milliseconds per stage (embed, dense, bm25,
+    fuse, rerank) for the stages this config runs; the eval runner uses it.
     """
     if store.count() == 0:
         return []
     pool = max(cfg.candidate_k, cfg.top_k)
+    clock = time.perf_counter
+    stage_ms = timings if timings is not None else {}
 
     dense: list[tuple[str, float]] = []
     if cfg.mode in ("dense", "hybrid_rrf"):
@@ -162,12 +193,18 @@ def retrieve(
         if vector is None:
             if embedder is None or not question:
                 raise ValueError("dense retrieval needs an embedder and a question, or query_emb")
+            start = clock()
             vector = embedder.hyde_query(question) if cfg.hyde else embedder.embed_query(question)
+            stage_ms["embed"] = (clock() - start) * 1000
+        start = clock()
         dense = store.dense(vector, pool)
+        stage_ms["dense"] = (clock() - start) * 1000
 
     sparse: list[tuple[str, float]] = []
     if cfg.mode in ("bm25", "hybrid_rrf") and question:
+        start = clock()
         sparse = bm25_rank(question, store.sparse_docs())[:pool]
+        stage_ms["bm25"] = (clock() - start) * 1000
 
     dense_by_id = dict(dense)
     sparse_by_id = dict(sparse)
@@ -176,7 +213,9 @@ def retrieve(
     elif cfg.mode == "bm25":
         ranked = sparse
     else:
+        start = clock()
         ranked = reciprocal_rank_fusion_scores([[i for i, _ in dense], [i for i, _ in sparse]], k=cfg.rrf_k)[:pool]
+        stage_ms["fuse"] = (clock() - start) * 1000
 
     hits = [
         Hit(
@@ -193,6 +232,7 @@ def retrieve(
     if cfg.rerank and hits and question:
         if reranker is None:
             raise ValueError("cfg.rerank is set but no reranker was given")
+        start = clock()
         candidates = hits[:cfg.candidate_k]
         scores = reranker.score(question, [store.text(h.chunk_id) for h in candidates])
         for hit, s in zip(candidates, scores):
@@ -200,6 +240,7 @@ def retrieve(
             hit.score = float(s)
         # sorted() is stable, so equal rerank scores keep the first-stage order.
         hits = sorted(candidates, key=lambda h: -h.score)
+        stage_ms["rerank"] = (clock() - start) * 1000
 
     return hits[:cfg.top_k]
 
@@ -264,11 +305,19 @@ def answer(
     load_bytes: Callable[[dict[str, Any]], tuple[bytes, str] | None] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Non-streaming grounded answer over the top `cfg.context_k` hits."""
-    selected = select_context_results(hits_to_results(hits, load_bytes), max_results=cfg.context_k)
-    contents = build_answer_contents(question, selected)
+    contents, gen_config, selected = answer_request(question, hits, cfg, load_bytes)
     resp = call_with_retry(lambda: client.models.generate_content(
-        model=model,
-        contents=contents,
-        config=types.GenerateContentConfig(temperature=0),
+        model=model, contents=contents, config=gen_config,
     ))
     return (resp.text or "").strip(), selected
+
+
+def answer_request(
+    question: str,
+    hits: list[Hit],
+    cfg: Config,
+    load_bytes: Callable[[dict[str, Any]], tuple[bytes, str] | None] | None = None,
+) -> tuple[list[types.Content], types.GenerateContentConfig, list[dict[str, Any]]]:
+    """The exact request `answer` sends, so the eval runner can time and cache it."""
+    selected = select_context_results(hits_to_results(hits, load_bytes), max_results=cfg.context_k)
+    return build_answer_contents(question, selected), types.GenerateContentConfig(temperature=0), selected

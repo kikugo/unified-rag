@@ -21,7 +21,8 @@ class FakeCollection:
 
     def get(self, where=None, include=None):
         ids = list(self.docs)
-        return {"ids": ids, "metadatas": [{"searchable_text": self.docs[i][1]} for i in ids]}
+        return {"ids": ids, "metadatas": [{"searchable_text": self.docs[i][1]} for i in ids],
+                "embeddings": [self.docs[i][0] for i in ids]}
 
     def query(self, query_embeddings, n_results, where=None, include=None):
         q = np.asarray(query_embeddings[0], dtype=float)
@@ -125,6 +126,31 @@ class PipelineTest(unittest.TestCase):
 
     def test_top_k_truncates(self):
         self.assertEqual(len(self._ids(Config(mode="dense", top_k=2, context_k=1))), 2)
+
+    def test_timings_cover_the_stages_run_and_leave_ranking_alone(self):
+        cfg = Config(mode="hybrid_rrf", rerank=True, top_k=4)
+        timings: dict[str, float] = {}
+        timed = self._ids(cfg, reranker=ReverseReranker(), timings=timings)
+        self.assertEqual(timed, self._ids(cfg, reranker=ReverseReranker()))
+        self.assertEqual(set(timings), {"embed", "dense", "bm25", "fuse", "rerank"})
+        self.assertTrue(all(ms >= 0 for ms in timings.values()))
+
+        bm25_only: dict[str, float] = {}
+        self._ids(Config(mode="bm25", top_k=4), timings=bm25_only)
+        self.assertEqual(set(bm25_only), {"bm25"})
+
+    def test_exact_search_matches_the_index_and_breaks_ties_by_id(self):
+        exact = ChromaStore(FakeCollection(DOCS), exact=True)
+        for cfg in (Config(mode="dense", top_k=4), Config(mode="hybrid_rrf", top_k=4)):
+            self.assertEqual([h.chunk_id for h in retrieve(QUESTION, cfg, exact, self.embedder)], self._ids(cfg))
+        hits = retrieve(QUESTION, Config(mode="dense", top_k=4), exact, self.embedder)
+        self.assertAlmostEqual(hits[0].dense_score, self._dense_scores()[0])
+
+        tied = ChromaStore(FakeCollection({"z": ([1.0, 0.0, 0.0], "z"), "y": ([1.0, 0.0, 0.0], "y")}), exact=True)
+        self.assertEqual([i for i, _ in tied.dense(np.array([1.0, 0.0, 0.0]), 2)], ["y", "z"])
+
+    def _dense_scores(self):
+        return [h.dense_score for h in retrieve(QUESTION, Config(mode="dense", top_k=4), self.store, self.embedder)]
 
     def test_empty_store_returns_nothing(self):
         empty = ChromaStore(FakeCollection({}))

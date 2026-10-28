@@ -150,6 +150,10 @@ class RagCoreTest(unittest.TestCase):
         self.assertTrue(is_transient_error(Exception("429 rate limit")))
         self.assertFalse(is_transient_error(Exception("400 invalid argument")))
 
+    def test_is_transient_error_includes_dropped_connections(self):
+        self.assertTrue(is_transient_error(Exception("Server disconnected without sending a response.")))
+        self.assertTrue(is_transient_error(ConnectionResetError("Connection reset by peer")))
+
     def test_call_with_retry_retries_503_then_succeeds(self):
         calls = {"n": 0}
 

@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
+from collections.abc import Callable
 
 import numpy as np
 from google.genai import types
 
+from rag.tracing import generation, record_generation, stage
 from rag_core import (
     bm25_rank,
     build_local_answer_prompt,
@@ -180,12 +182,32 @@ def retrieve(
 
     Pass a dict as `timings` to get milliseconds per stage (embed, dense, bm25,
     fuse, rerank) for the stages this config runs; the eval runner uses it.
+    With LANGFUSE_TRACING=1 the same stages become spans: `retrieve` (with
+    embed, dense, bm25 and fuse inside it), then `rerank`.
     """
     if store.count() == 0:
         return []
-    pool = max(cfg.candidate_k, cfg.top_k)
-    clock = time.perf_counter
     stage_ms = timings if timings is not None else {}
+    with stage("retrieve", mode=cfg.mode, hyde=cfg.hyde, candidate_k=cfg.candidate_k):
+        hits = _first_stage(question, cfg, store, embedder, query_emb, stage_ms)
+    if cfg.rerank and hits and question:
+        if reranker is None:
+            raise ValueError("cfg.rerank is set but no reranker was given")
+        with stage("rerank", candidates=min(len(hits), cfg.candidate_k)):
+            hits = _rerank(question, cfg, store, reranker, hits, stage_ms)
+    return hits[:cfg.top_k]
+
+
+def _timed(stage_ms: dict[str, float], name: str, fn: Callable[[], Any]) -> Any:
+    with stage(name):
+        start = time.perf_counter()
+        out = fn()
+        stage_ms[name] = (time.perf_counter() - start) * 1000
+    return out
+
+
+def _first_stage(question, cfg: Config, store: ChromaStore, embedder, query_emb, stage_ms) -> list[Hit]:
+    pool = max(cfg.candidate_k, cfg.top_k)
 
     dense: list[tuple[str, float]] = []
     if cfg.mode in ("dense", "hybrid_rrf"):
@@ -193,18 +215,13 @@ def retrieve(
         if vector is None:
             if embedder is None or not question:
                 raise ValueError("dense retrieval needs an embedder and a question, or query_emb")
-            start = clock()
-            vector = embedder.hyde_query(question) if cfg.hyde else embedder.embed_query(question)
-            stage_ms["embed"] = (clock() - start) * 1000
-        start = clock()
-        dense = store.dense(vector, pool)
-        stage_ms["dense"] = (clock() - start) * 1000
+            vector = _timed(stage_ms, "embed",
+                            lambda: embedder.hyde_query(question) if cfg.hyde else embedder.embed_query(question))
+        dense = _timed(stage_ms, "dense", lambda: store.dense(vector, pool))
 
     sparse: list[tuple[str, float]] = []
     if cfg.mode in ("bm25", "hybrid_rrf") and question:
-        start = clock()
-        sparse = bm25_rank(question, store.sparse_docs())[:pool]
-        stage_ms["bm25"] = (clock() - start) * 1000
+        sparse = _timed(stage_ms, "bm25", lambda: bm25_rank(question, store.sparse_docs())[:pool])
 
     dense_by_id = dict(dense)
     sparse_by_id = dict(sparse)
@@ -213,11 +230,10 @@ def retrieve(
     elif cfg.mode == "bm25":
         ranked = sparse
     else:
-        start = clock()
-        ranked = reciprocal_rank_fusion_scores([[i for i, _ in dense], [i for i, _ in sparse]], k=cfg.rrf_k)[:pool]
-        stage_ms["fuse"] = (clock() - start) * 1000
+        ranked = _timed(stage_ms, "fuse", lambda: reciprocal_rank_fusion_scores(
+            [[i for i, _ in dense], [i for i, _ in sparse]], k=cfg.rrf_k)[:pool])
 
-    hits = [
+    return [
         Hit(
             chunk_id=chunk_id,
             score=score,
@@ -229,20 +245,18 @@ def retrieve(
         for chunk_id, score in ranked
     ]
 
-    if cfg.rerank and hits and question:
-        if reranker is None:
-            raise ValueError("cfg.rerank is set but no reranker was given")
-        start = clock()
-        candidates = hits[:cfg.candidate_k]
-        scores = reranker.score(question, [store.text(h.chunk_id) for h in candidates])
-        for hit, s in zip(candidates, scores):
-            hit.rerank_score = float(s)
-            hit.score = float(s)
-        # sorted() is stable, so equal rerank scores keep the first-stage order.
-        hits = sorted(candidates, key=lambda h: -h.score)
-        stage_ms["rerank"] = (clock() - start) * 1000
 
-    return hits[:cfg.top_k]
+def _rerank(question: str, cfg: Config, store: ChromaStore, reranker, hits: list[Hit], stage_ms) -> list[Hit]:
+    start = time.perf_counter()
+    candidates = hits[:cfg.candidate_k]
+    scores = reranker.score(question, [store.text(h.chunk_id) for h in candidates])
+    for hit, s in zip(candidates, scores):
+        hit.rerank_score = float(s)
+        hit.score = float(s)
+    # sorted() is stable, so equal rerank scores keep the first-stage order.
+    ranked = sorted(candidates, key=lambda h: -h.score)
+    stage_ms["rerank"] = (time.perf_counter() - start) * 1000
+    return ranked
 
 
 def build_answer_contents(
@@ -306,10 +320,13 @@ def answer(
 ) -> tuple[str, list[dict[str, Any]]]:
     """Non-streaming grounded answer over the top `cfg.context_k` hits."""
     contents, gen_config, selected = answer_request(question, hits, cfg, load_bytes)
-    resp = call_with_retry(lambda: client.models.generate_content(
-        model=model, contents=contents, config=gen_config,
-    ))
-    return (resp.text or "").strip(), selected
+    with generation("generate", model=model, input=question) as gen:
+        resp = call_with_retry(lambda: client.models.generate_content(
+            model=model, contents=contents, config=gen_config,
+        ))
+        text = (resp.text or "").strip()
+        record_generation(gen, text, resp.usage_metadata)
+    return text, selected
 
 
 def answer_request(

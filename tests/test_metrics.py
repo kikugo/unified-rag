@@ -8,6 +8,7 @@ from eval.metrics import (
     hit_at_k,
     mean,
     mrr_at_k,
+    paired_bootstrap_ci,
     percentile,
     recall_at_k,
 )
@@ -92,6 +93,25 @@ class StatsTest(unittest.TestCase):
     def test_bootstrap_of_constant_is_a_point(self):
         self.assertEqual(bootstrap_ci([1.0] * 10, n=500), (1.0, 1.0))
         self.assertIsNone(bootstrap_ci([]))
+
+
+class PairedBootstrapTest(unittest.TestCase):
+    def test_identical_configs_differ_by_exactly_zero(self):
+        values = [1.0, 0.0, 1.0, 1.0]
+        self.assertEqual(paired_bootstrap_ci(values, values, n=500), (0.0, 0.0, 0.0))
+
+    def test_consistent_gain_has_an_interval_above_zero(self):
+        base = [0.0] * 20 + [1.0] * 20
+        other = [1.0] * 10 + [0.0] * 10 + [1.0] * 20  # wins 10 questions, loses none
+        mean_diff, lo, hi = paired_bootstrap_ci(base, other, n=2000, seed=1)
+        self.assertEqual(mean_diff, 0.25)  # 10 / 40
+        self.assertGreater(lo, 0.0)
+        self.assertGreaterEqual(hi, mean_diff)
+
+    def test_lengths_must_match(self):
+        with self.assertRaises(ValueError):
+            paired_bootstrap_ci([1.0], [1.0, 0.0])
+        self.assertIsNone(paired_bootstrap_ci([], []))
 
 
 if __name__ == "__main__":

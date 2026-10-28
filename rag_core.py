@@ -48,12 +48,14 @@ def format_prompt_cost(prompt_total: int, answer_usage: dict | None = None) -> s
 
 
 def is_transient_error(error: Exception) -> bool:
-    """True for errors worth retrying: rate limits plus transient server faults
-    like 503 overload, which Gemini returns under load."""
+    """True for errors worth retrying: rate limits, transient server faults like
+    503 overload, which Gemini returns under load, and dropped connections
+    ("Server disconnected without sending a response")."""
     if is_rate_limit_error(error):
         return True
     msg = str(error).lower()
-    return any(token in msg for token in ("503", "unavailable", "overloaded", "internal error", "timeout"))
+    return any(token in msg for token in ("503", "unavailable", "overloaded", "internal error", "timeout",
+                                          "disconnected", "connection reset"))
 
 
 def call_with_retry(fn: Callable, attempts: int = 3, base_delay: float = 1.0, sleep=time.sleep):

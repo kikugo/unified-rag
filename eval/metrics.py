@@ -103,3 +103,19 @@ def bootstrap_ci(values: Sequence[float], n: int = 10_000, seed: int = 0, level:
     means = sorted(sum(rng.choices(values, k=size)) / size for _ in range(n))
     tail = (1 - level) / 2 * 100
     return percentile(means, tail), percentile(means, 100 - tail)
+
+
+def paired_bootstrap_ci(baseline: Sequence[float], other: Sequence[float], n: int = 10_000, seed: int = 0,
+                        level: float = 0.95) -> tuple[float, float, float] | None:
+    """Mean of `other - baseline` over the same questions, with a percentile bootstrap CI.
+
+    Pairing removes the between-question variance that makes two unpaired CIs
+    overlap even when one config wins on almost every question.
+    """
+    if len(baseline) != len(other):
+        raise ValueError("paired values need the same length")
+    diffs = [b - a for a, b in zip(baseline, other)]
+    ci = bootstrap_ci(diffs, n=n, seed=seed, level=level)
+    if ci is None:
+        return None
+    return sum(diffs) / len(diffs), ci[0], ci[1]

@@ -15,8 +15,8 @@ Local stages (vector search, BM25, fusion, reranking) are timed live.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Any
 
 from google.genai import types
+from langfuse import Evaluation
 
-from eval.golden import GOLDEN_PATH, TYPES, load_golden
+from eval.golden import TYPES, golden_hash, load_golden
 from eval.judge import (
     JUDGE_MODEL,
     JUDGE_VERSION,
@@ -35,6 +36,7 @@ from eval.judge import (
     is_refusal,
     score_generation,
 )
+from eval.langfuse_sync import DATASET, item_id
 from eval.metrics import (
     bootstrap_ci,
     citation_correctness,
@@ -45,6 +47,7 @@ from eval.metrics import (
     percentile,
     recall_at_k,
 )
+from rag import tracing
 from rag.cache import DiskCache, cache_key
 from rag.gemini_client import GeminiEmbedder
 from rag.index import DEFAULT_DIM, open_store, read_figure
@@ -58,6 +61,7 @@ ROOT = EVAL_DIR.parent
 CONFIG_DIR = EVAL_DIR / "configs"
 PRICES_PATH = EVAL_DIR / "prices.json"
 RESULTS_DIR = ROOT / "results"
+TRACED_DIR = RESULTS_DIR / "traced"
 RETRIEVAL_DEPTH = 10
 LOCAL_STAGES = ("dense", "bm25", "fuse")
 # Rough judge spend per judged answer, only for the pre-run estimate:
@@ -127,18 +131,22 @@ class Services:
 
 def gemini_generate(client) -> Callable[[str, list[types.Content], types.GenerateContentConfig], dict[str, Any]]:
     def generate(model, contents, gen_config):
-        start = time.perf_counter()
-        resp = call_with_retry(lambda: client.models.generate_content(
-            model=model, contents=contents, config=gen_config))
-        latency = (time.perf_counter() - start) * 1000
-        usage = resp.usage_metadata
-        return {
-            "text": (resp.text or "").strip(),
-            "latency_ms": latency,
-            "input_tokens": (usage.prompt_token_count or 0) if usage else 0,
-            # thinking tokens are billed as output
-            "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0,
-        }
+        with tracing.generation("generate", model=model) as gen:
+            start = time.perf_counter()
+            resp = call_with_retry(lambda: client.models.generate_content(
+                model=model, contents=contents, config=gen_config))
+            latency = (time.perf_counter() - start) * 1000
+            usage = resp.usage_metadata
+            out = {
+                "text": (resp.text or "").strip(),
+                "latency_ms": latency,
+                "input_tokens": (usage.prompt_token_count or 0) if usage else 0,
+                # thinking tokens are billed as output
+                "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0,
+            }
+            tracing.record_generation(gen, out["text"], input_tokens=out["input_tokens"],
+                                      output_tokens=out["output_tokens"])
+        return out
     return generate
 
 
@@ -179,8 +187,11 @@ def _load_bytes(meta: dict[str, Any]) -> tuple[bytes, str] | None:
     return read_figure(meta) if meta.get("image") else None
 
 
-def real_services(cfg: RunConfig, with_judge: bool) -> Services:
-    cache = DiskCache()
+def real_services(cfg: RunConfig, with_judge: bool, fresh: bool = False) -> Services:
+    """`fresh` recomputes answers and query embeddings against an in-memory cache,
+    so a traced run measures real calls. Judge verdicts still use the disk cache."""
+    judge_cache = DiskCache()
+    cache = DiskCache(":memory:") if fresh else judge_cache
     embedder = GeminiEmbedder(cache, dim=DEFAULT_DIM)
     generate = None
 
@@ -194,7 +205,7 @@ def real_services(cfg: RunConfig, with_judge: bool) -> Services:
         store=open_store(exact=True),  # deterministic reruns, see ChromaStore
         embedder=embedder,
         reranker=CrossEncoderReranker() if cfg.rerank else None,
-        judge=FoundryJudge(cache) if with_judge else None,
+        judge=FoundryJudge(judge_cache) if with_judge else None,
         cache=cache,
         generate=lazy_generate,
         measure_query=gemini_measure_query(embedder),
@@ -292,7 +303,8 @@ def run_row(row: dict[str, Any], cfg: RunConfig, svc: Services, prices: dict[str
         })
 
     if svc.judge is not None:
-        out.update(judge_row(svc, row, answer, _contexts(selected)))
+        with tracing.stage("judge"):
+            out.update(judge_row(svc, row, answer, _contexts(selected)))
 
     tokens = {
         "generate_input": generated["input_tokens"],
@@ -386,10 +398,6 @@ def estimate(rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: 
     return {"calls": need, "usd": usd}
 
 
-def golden_hash(path: Path = GOLDEN_PATH) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.exists() else ""
-
-
 def git_state() -> dict[str, Any]:
     try:
         sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
@@ -407,6 +415,63 @@ def run(rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: dict[
     for i, row in enumerate(rows, start=1):
         out_rows.append(run_row(row, cfg, svc, prices))
         progress(f"[{i}/{len(rows)}] {row['id']}")
+    return assemble(out_rows, cfg, svc, prices)
+
+
+SCORED = ("hit@5", "mrr@10", "citation_correctness", "faithfulness", "answer_relevancy")
+
+
+def row_scores(out: dict[str, Any]) -> list[Evaluation]:
+    """The metrics run_row already computed, reported to Langfuse as scores (no new judge calls)."""
+    scores = [Evaluation(name=key, value=float(out[key])) for key in SCORED if out.get(key) is not None]
+    if "refused" in out:
+        scores.append(Evaluation(name="refused", value=float(out["refused"])))
+    return scores
+
+
+def run_traced(rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: dict[str, Any],
+               dataset, run_name: str, progress: Callable[[str], None] = lambda _: None) -> tuple[dict[str, Any], Any]:
+    """Run the rows as a Langfuse experiment on the synced golden dataset.
+
+    One trace per question: a `query` span holding retrieve, rerank, generate and
+    judge, tagged with the config name and question id. The rows run one at a
+    time, in golden order, through the same run_row as an untraced run.
+    """
+    by_item = {item_id(r["id"]): r for r in rows}
+    missing = sorted(set(by_item) - {item.id for item in dataset.items})
+    if missing:
+        raise SystemExit(f"{len(missing)} golden rows aren't in the Langfuse dataset; run python -m eval.langfuse_sync")
+    order = {key: i for i, key in enumerate(by_item)}
+    dataset.items = sorted((item for item in dataset.items if item.id in by_item), key=lambda item: order[item.id])
+    results: dict[str, dict[str, Any]] = {}
+
+    def task(*, item, **kwargs):
+        row = by_item[item.id]
+        with (tracing.attributes(tags=[cfg.name, row["id"]], metadata={"config": cfg.name, "question_id": row["id"]}),
+              tracing.stage("query", question_id=row["id"], type=row["type"]) as span):
+            out = run_row(row, cfg, svc, prices)
+            if span is not None:
+                span.update(input=row["question"], output=out["answer"])
+        results[row["id"]] = out
+        progress(f"[{len(results)}/{len(rows)}] {row['id']}")
+        return out["answer"]
+
+    def scores(*, metadata=None, **kwargs):
+        return row_scores(results[metadata["golden_id"]])
+
+    experiment = dataset.run_experiment(
+        name=cfg.name, run_name=run_name, task=task, evaluators=[scores], max_concurrency=1,
+        description=f"eval.run --config {cfg.name} --trace",
+        metadata={"config": cfg.name, "generator": cfg.generator, "judge": f"{JUDGE_MODEL} {JUDGE_VERSION}"},
+    )
+    tracing.flush()
+    out_rows = [results[r["id"]] for r in rows if r["id"] in results]
+    if len(out_rows) != len(rows):
+        raise SystemExit(f"only {len(out_rows)} of {len(rows)} rows finished; see the Langfuse experiment")
+    return assemble(out_rows, cfg, svc, prices), experiment
+
+
+def assemble(out_rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: dict[str, Any]) -> dict[str, Any]:
     return {
         "meta": {
             "config": {f.name: getattr(cfg, f.name) for f in fields(cfg)},
@@ -433,6 +498,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-judge", action="store_true", help="skip faithfulness, relevancy and refusal")
     parser.add_argument("--yes", action="store_true", help="skip the cost confirmation")
     parser.add_argument("--out", help="output path (default results/<config>.json)")
+    parser.add_argument("--trace", action="store_true",
+                        help="trace to Langfuse as an experiment on the synced golden dataset; "
+                             "recomputes answers and writes results/traced/<config>.json")
     args = parser.parse_args(argv)
 
     cfg = load_run_config(args.config)
@@ -446,15 +514,30 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("no golden rows selected")
 
     prices = load_prices()
-    svc = real_services(cfg, with_judge=not args.no_judge)
+    if args.trace:
+        # Traced runs make real calls so the spans show real latency, and write to
+        # results/traced/ so the ablation results and the README tables stay as they are.
+        tracing.require_keys()
+        os.environ[tracing.FLAG] = "1"
+    svc = real_services(cfg, with_judge=not args.no_judge, fresh=args.trace)
     est = estimate(rows, cfg, svc, prices)
     print(f"{cfg.name}: {len(rows)} rows; uncached calls {est['calls']}, about ${est['usd']:.2f}")
     if any(est["calls"].values()) and not args.yes and input("Run? [y/N] ").strip().lower() != "y":
         return 1
 
-    result = run(rows, cfg, svc, prices, progress=lambda msg: print(msg, flush=True))
     partial = bool(args.limit or args.ids)
-    out = Path(args.out) if args.out else RESULTS_DIR / f"{cfg.name}{'.partial' if partial else ''}.json"
+    name = f"{cfg.name}{'.partial' if partial else ''}.json"
+    if args.trace:
+        run_name = f"{cfg.name} {time.strftime('%Y-%m-%d %H:%M')}"
+        dataset = tracing.client().get_dataset(DATASET)
+        result, experiment = run_traced(rows, cfg, svc, prices, dataset, run_name,
+                                        progress=lambda msg: print(msg, flush=True))
+        result["meta"]["langfuse"] = {"dataset": DATASET, "run_name": run_name,
+                                      "experiment_url": getattr(experiment, "experiment_url", None)}
+        out = Path(args.out) if args.out else TRACED_DIR / name
+    else:
+        result = run(rows, cfg, svc, prices, progress=lambda msg: print(msg, flush=True))
+        out = Path(args.out) if args.out else RESULTS_DIR / name
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
 

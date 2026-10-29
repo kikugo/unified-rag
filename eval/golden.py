@@ -7,6 +7,7 @@ quietly skewing a score.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -79,3 +80,9 @@ def mix(rows: list[dict[str, Any]]) -> dict[str, int]:
     for row in rows:
         counts[row["type"]] += 1
     return counts
+
+
+def golden_hash(path: str | Path = GOLDEN_PATH) -> str:
+    """First 16 hex chars of the golden file's sha256, recorded with every result."""
+    path = Path(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.exists() else ""

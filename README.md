@@ -148,6 +148,21 @@ Every API call (answers, judge verdicts, query embeddings) is cached in `.cache/
 
 What these metrics miss: faithfulness only checks that the answer agrees with the retrieved text, so a faithful answer built on the wrong chunk still scores well. That's why it's reported next to hit@k and citation correctness, not alone. Figures reach the judge as their caption, since DeepEval's judge here is text-only, so an answer read off the image itself can score lower than it deserves. The judge also makes mistakes of its own. Reading through the flagged rows turned up answers it called refusals that weren't, and near-verbatim answers it marked unfaithful. I kept DeepEval's default prompts rather than tune them until the scores looked better, so treat single-row judge scores as noisy and read the totals with their intervals.
 
+## Tracing
+
+Retrieval and answering can send traces to [Langfuse](https://langfuse.com). Tracing is off unless `LANGFUSE_TRACING=1` and the Langfuse keys are set (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`), so tests and normal runs never call it.
+
+```bash
+uv run python -m eval.langfuse_sync                          # upload eval/golden.jsonl as the b1-golden dataset
+uv run python -m eval.run --config hybrid_rrf_rerank --trace  # one traced experiment on that dataset
+```
+
+Each question becomes one trace, tagged with the config name and question id. The `query` span holds `retrieve` (query embedding, dense search, BM25 and fusion inside it), then `rerank`, `generate` (with the model and token counts) and `judge`. The run shows up in Langfuse as an experiment on the dataset, with hit@5, MRR@10, citation correctness, faithfulness and refusals attached to each item as scores. Those scores are the ones the runner already computed, not a second judgement.
+
+A traced run makes real API calls instead of reading the cache, since cached answers would show 0 ms spans. It writes to `results/traced/`, so the ablation tables above don't change. The app and `rag.cli` use the same spans when `LANGFUSE_TRACING=1` is set.
+
+![A traced question in Langfuse: the query span with retrieve, rerank, generate and judge, and their latencies](docs/langfuse-trace.png)
+
 ## Notes to self: what's left
 
 My professor reviewed the codebase a while back and pointed out a pile of real embarrassments. Most of that list is gone now. Retrieval is hybrid BM25+RRF with top-K context. Audio and video get transcribed. MP3 decodes properly, re-uploads dedupe by content hash, each file is one source row, citations seek to the right spot, and the corpus survives a restart.
@@ -161,7 +176,7 @@ Still open:
 
 - **Weighted fusion**: plain RRF gives both rankings equal weight, even on a question where one of them is useless. Weighting the arms by query type is the next retrieval change worth trying, and the per-type table is the baseline to beat.
 - **Judge agreement**: the generation judge makes visible mistakes. A small hand-labelled check set, plus a script that reports judge agreement, would put a number on how far to trust faithfulness.
-- **Tracing and a CI gate**: per-query traces, and a pull-request check that fails when retrieval or faithfulness drops.
+- **CI gate**: a pull-request check that fails when retrieval or faithfulness drops. Tracing is done: see [Tracing](#tracing).
 - **Transcription cost**: speech-to-text is one Gemini call per chunk. Fine for short clips, rough for a long video. I want a batch path or a per-file cap before heavy use.
 - **Semantic PDF chunking**: overlap page windows are in place. `semchunk` is worth trying now that the benchmark can show whether chunk boundaries cost anything.
 - **The cutting-edge stuff**: ColPali (treats pages as image patches, skips OCR), ColBERT-style late interaction, RAPTOR tree summarization, full agentic RAG. Interesting, each a real dependency and a real architecture change. Only worth it if this becomes a product or a research demo, not before.

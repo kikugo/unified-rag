@@ -6,9 +6,10 @@ PyMuPDF>=1.23.0
 requests>=2.31.0
 chromadb>=0.4.24
 # Keep ChromaDB's OpenTelemetry deps recent; older otlp-proto ships pre-3.19
-# generated code that fails to import under newer protobuf runtimes.
-opentelemetry-proto>=1.42.0
-opentelemetry-exporter-otlp-proto-grpc>=1.42.0
+# generated code that fails to import under newer protobuf runtimes. Langfuse
+# pulls the http exporter forward, and the grpc one must match its version.
+opentelemetry-proto>=1.45.1
+opentelemetry-exporter-otlp-proto-grpc>=1.45.1
 av>=11.0.0
 pandas>=2.0.0
 # Benchmark corpus, retrieval CLI and reranker (rag/)
@@ -19,3 +20,5 @@ fastembed>=0.9.0
 deepeval>=4.3,<5
 openai>=3.0
 azure-identity>=1.20
+# Optional tracing (rag/tracing.py), off unless LANGFUSE_TRACING=1
+langfuse>=5,<6

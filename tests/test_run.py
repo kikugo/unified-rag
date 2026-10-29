@@ -160,6 +160,12 @@ class RunnerTest(_Base):
             self.assertEqual(a.get("faithfulness"), b.get("faithfulness"))
         self.assertEqual(first["totals"]["judge_cost_usd_total"], second["totals"]["judge_cost_usd_total"])
 
+    def test_fresh_estimate_counts_everything_without_retrieving(self):
+        svc = self._services()
+        svc.embedder = None  # retrieving would fail, proving the fresh estimate never does
+        est = estimate(ROWS, self.cfg, svc, load_prices(), fresh=True)
+        self.assertEqual(est["calls"], {"query": 3, "answer": 3, "judge_row": 3})
+
     def test_estimate_counts_uncached_calls(self):
         est = estimate(ROWS, self.cfg, self._services(), load_prices())
         self.assertEqual(est["calls"], {"query": 3, "answer": 3, "judge_row": 3})

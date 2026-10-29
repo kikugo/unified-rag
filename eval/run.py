@@ -374,10 +374,20 @@ def summarize_by_type(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 # --- driver -------------------------------------------------------------------------------
 
-def estimate(rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: dict[str, Any]) -> dict[str, Any]:
-    """Count uncached paid calls before making any. Retrieval runs first (cheap)."""
+def estimate(rows: list[dict[str, Any]], cfg: RunConfig, svc: Services, prices: dict[str, Any],
+             fresh: bool = False) -> dict[str, Any]:
+    """Count uncached paid calls before making any. Retrieval runs first (cheap).
+
+    A fresh run recomputes everything by definition, so it counts every call
+    without retrieving: a retrieval pass would warm the in-memory cache and the
+    traced embed spans would then show a cache hit instead of the real call.
+    """
     pcfg = cfg.pipeline_config()
     need = {"query": 0, "answer": 0, "judge_row": 0}
+    if fresh:
+        need = {"query": 0 if pcfg.mode == "bm25" else len(rows), "answer": len(rows),
+                "judge_row": len(rows) if svc.judge is not None else 0}
+        rows = []
     for row in rows:
         if pcfg.mode != "bm25" and svc.cache.get_text(_query_key(cfg, row["question"])) is None:
             need["query"] += 1
@@ -520,7 +530,7 @@ def main(argv: list[str] | None = None) -> int:
         tracing.require_keys()
         os.environ[tracing.FLAG] = "1"
     svc = real_services(cfg, with_judge=not args.no_judge, fresh=args.trace)
-    est = estimate(rows, cfg, svc, prices)
+    est = estimate(rows, cfg, svc, prices, fresh=args.trace)
     print(f"{cfg.name}: {len(rows)} rows; uncached calls {est['calls']}, about ${est['usd']:.2f}")
     if any(est["calls"].values()) and not args.yes and input("Run? [y/N] ").strip().lower() != "y":
         return 1

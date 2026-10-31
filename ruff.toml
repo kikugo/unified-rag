@@ -1,0 +1,11 @@
+# Shared by local runs and CI, so both report the same findings.
+line-length = 120
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# zip(strict=...) would turn length mismatches some callers rely on into errors.
+ignore = ["B905"]
+
+[lint.per-file-ignores]
+# HTML fixture inside a string; wrapping it would change the test input.
+"tests/test_corpus.py" = ["E501"]

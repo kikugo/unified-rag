@@ -48,7 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     hits = retrieve(args.question, cfg, store, embedder, reranker)
 
     print(f"# {cfg}")
-    print(f"{'rank':>4}  {'chunk_id':16}  {'score':>8}  {'dense':>7}  {'bm25':>7}  {'rrf':>7}  {'rerank':>7}  doc_id / page / kind")
+    print(f"{'rank':>4}  {'chunk_id':16}  {'score':>8}  {'dense':>7}  {'bm25':>7}  {'rrf':>7}  {'rerank':>7}  "
+          "doc_id / page / kind")
     for rank, hit in enumerate(hits, start=1):
         meta = hit.metadata
         print(f"{rank:>4}  {hit.chunk_id:16}  {hit.score:8.4f}  {_fmt(hit.dense_score):>7}  "

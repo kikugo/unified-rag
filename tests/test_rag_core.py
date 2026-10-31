@@ -9,11 +9,11 @@ from rag_core import (
     format_token_usage,
     is_rate_limit_error,
     is_transient_error,
-    reciprocal_rank_fusion,
-    tokenize_for_search,
     pop_source_by_id,
-    source_artifacts,
+    reciprocal_rank_fusion,
     select_context_results,
+    source_artifacts,
+    tokenize_for_search,
     within_demo_upload_cap,
 )
 
@@ -199,9 +199,9 @@ class RagCoreTest(unittest.TestCase):
         self.assertEqual(calls["n"], 1)
 
     def test_call_with_retry_raises_after_exhausting_attempts(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             call_with_retry(
-                lambda: (_ for _ in ()).throw(Exception("429")),
+                lambda: (_ for _ in ()).throw(RuntimeError("429")),
                 attempts=2,
                 sleep=lambda _: None,
             )

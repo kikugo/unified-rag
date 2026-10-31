@@ -30,8 +30,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from eval.draft_questions import CANDIDATES_PATH, read_candidates, shingles
 from eval.golden import EVAL_DIR, GOLDEN_PATH, TARGET_MIX, TYPES, GoldenSetError, load_golden, mix, validate_row

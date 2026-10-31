@@ -142,7 +142,8 @@ def gemini_generate(client) -> Callable[[str, list[types.Content], types.Generat
                 "latency_ms": latency,
                 "input_tokens": (usage.prompt_token_count or 0) if usage else 0,
                 # thinking tokens are billed as output
-                "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0,
+                "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0))
+                if usage else 0,
             }
             tracing.record_generation(gen, out["text"], input_tokens=out["input_tokens"],
                                       output_tokens=out["output_tokens"])

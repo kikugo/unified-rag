@@ -506,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, help="name of a file in eval/configs/")
     parser.add_argument("--limit", type=int, help="only the first N golden rows")
     parser.add_argument("--ids", help="comma-separated golden ids, e.g. g001,g005")
+    parser.add_argument("--ids-file", help='JSON file with an "ids" list, e.g. eval/smoke_ids.json')
     parser.add_argument("--no-judge", action="store_true", help="skip faithfulness, relevancy and refusal")
     parser.add_argument("--yes", action="store_true", help="skip the cost confirmation")
     parser.add_argument("--out", help="output path (default results/<config>.json)")
@@ -516,8 +517,15 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = load_run_config(args.config)
     rows = load_golden()
+    wanted: set[str] = set()
     if args.ids:
-        wanted = set(args.ids.split(","))
+        wanted |= set(args.ids.split(","))
+    if args.ids_file:
+        wanted |= set(json.loads(Path(args.ids_file).read_text(encoding="utf-8"))["ids"])
+    if wanted:
+        unknown = wanted - {r["id"] for r in rows}
+        if unknown:
+            raise SystemExit(f"unknown golden ids: {sorted(unknown)}")
         rows = [r for r in rows if r["id"] in wanted]
     if args.limit:
         rows = rows[:args.limit]
@@ -536,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
     if any(est["calls"].values()) and not args.yes and input("Run? [y/N] ").strip().lower() != "y":
         return 1
 
-    partial = bool(args.limit or args.ids)
+    partial = bool(args.limit or wanted)
     name = f"{cfg.name}{'.partial' if partial else ''}.json"
     if args.trace:
         run_name = f"{cfg.name} {time.strftime('%Y-%m-%d %H:%M')}"

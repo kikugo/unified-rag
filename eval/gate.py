@@ -124,13 +124,35 @@ def render_summary(checks: list[dict[str, Any]], rows: list[dict[str, Any]], cur
     return "\n".join(lines) + "\n"
 
 
+RUN_METRICS = ("hit@1", "hit@5", "mrr@10", "citation_correctness", "faithfulness", "answer_relevancy",
+               "refusal_accuracy", "false_refusal_rate")
+
+
+def render_run(result: dict[str, Any]) -> str:
+    """Totals of one run as a markdown table, for the manual full-run job (no pass/fail)."""
+    t, cfg = result["totals"], result["meta"]["config"]
+    lines = [f"## Eval run: `{cfg['name']}` on {t['n']} questions", "", "| Metric | Value |", "|---|---|"]
+    lines += [f"| {m} | {_fmt(t.get(m))} |" for m in RUN_METRICS]
+    lines.append(f"| p95 total latency ms | {t['latency_ms']['total']['p95']:,.0f} |")
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m eval.gate")
     parser.add_argument("--make-subset", action="store_true", help=f"write {SMOKE_PATH.name} from the golden set")
     parser.add_argument("--baseline", default="results/baseline.json")
     parser.add_argument("--current", default="results/gate/current.json")
     parser.add_argument("--summary", help="append the markdown summary here (CI: $GITHUB_STEP_SUMMARY)")
+    parser.add_argument("--run", help="summarize one results file instead of gating (manual full runs)")
     args = parser.parse_args(argv)
+
+    if args.run:
+        summary = render_run(json.loads(Path(args.run).read_text(encoding="utf-8")))
+        print(summary)
+        if args.summary:
+            with open(args.summary, "a", encoding="utf-8") as fh:
+                fh.write(summary)
+        return 0
 
     if args.make_subset:
         ids = make_subset(load_golden())

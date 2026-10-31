@@ -88,6 +88,16 @@ class SummaryTest(unittest.TestCase):
             self.assertEqual(main(["--baseline", str(base), "--current", str(base)]), 0)
 
 
+class RunSummaryTest(unittest.TestCase):
+    def test_full_run_summary_from_a_real_results_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp, "s.md")
+            self.assertEqual(main(["--run", "results/hybrid_rrf_rerank.json", "--summary", str(summary)]), 0)
+            text = summary.read_text()
+        self.assertIn("## Eval run: `hybrid_rrf_rerank` on 100 questions", text)
+        self.assertIn("| false_refusal_rate |", text)
+
+
 class SubsetTest(unittest.TestCase):
     def test_subset_is_deterministic_and_keeps_quotas(self):
         rows = load_golden()

@@ -163,6 +163,18 @@ A traced run makes real API calls instead of reading the cache, since cached ans
 
 ![A traced question in Langfuse: the query span with retrieve, rerank, generate and judge, and their latencies](docs/langfuse-trace.png)
 
+## CI gate
+
+`.github/workflows/eval.yml` runs on every pull request: ruff and pytest, then the eval of the Hybrid + rerank config on a fixed smoke subset of the golden set (`eval/smoke_ids.json`, drawn once with a seed and stratified by question type). `python -m eval.gate` compares that run with `results/baseline.json` and fails the check when:
+
+- hit@5 drops by more than the limit in `eval/gate.py`,
+- faithfulness drops by more than its limit, or
+- the false-refusal rate on answerable questions rises by more than its limit.
+
+The third check is there because the ablation shows that narrowing the answer to one context chunk leaves hit@5 alone and even raises faithfulness, while the model refuses many more questions it could have answered. A gate on hit@5 and faithfulness alone would wave that change through. The job summary lists each metric against the baseline and every question whose result changed.
+
+The Chroma index, embeddings, cached answers and judge verdicts live in a GitHub Actions cache, seeded by the first run on `main`, and the baseline is that run's own result, so a pull request that changes nothing makes no paid calls and reproduces it exactly. A manual run (`workflow_dispatch`) evaluates every golden question and reports without gating. Keys come from repository secrets (`GOOGLE_API_KEY`, `JUDGE_API_KEY`) and the `JUDGE_ENDPOINT` variable; pull requests from forks get no secrets and stop after lint and tests.
+
 ## Notes to self: what's left
 
 My professor reviewed the codebase a while back and pointed out a pile of real embarrassments. Most of that list is gone now. Retrieval is hybrid BM25+RRF with top-K context. Audio and video get transcribed. MP3 decodes properly, re-uploads dedupe by content hash, each file is one source row, citations seek to the right spot, and the corpus survives a restart.
@@ -176,7 +188,7 @@ Still open:
 
 - **Weighted fusion**: plain RRF gives both rankings equal weight, even on a question where one of them is useless. Weighting the arms by query type is the next retrieval change worth trying, and the per-type table is the baseline to beat.
 - **Judge agreement**: the generation judge makes visible mistakes. A small hand-labelled check set, plus a script that reports judge agreement, would put a number on how far to trust faithfulness.
-- **CI gate**: a pull-request check that fails when retrieval or faithfulness drops. Tracing is done: see [Tracing](#tracing).
+- **CI gate**: done, see [CI gate](#ci-gate). Tracing too, see [Tracing](#tracing).
 - **Transcription cost**: speech-to-text is one Gemini call per chunk. Fine for short clips, rough for a long video. I want a batch path or a per-file cap before heavy use.
 - **Semantic PDF chunking**: overlap page windows are in place. `semchunk` is worth trying now that the benchmark can show whether chunk boundaries cost anything.
 - **The cutting-edge stuff**: ColPali (treats pages as image patches, skips OCR), ColBERT-style late interaction, RAPTOR tree summarization, full agentic RAG. Interesting, each a real dependency and a real architecture change. Only worth it if this becomes a product or a research demo, not before.

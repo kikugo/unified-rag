@@ -1,0 +1,129 @@
+name: eval
+
+# Lint and tests, then the retrieval and answer eval on the smoke subset, gated
+# against results/baseline.json (see eval/gate.py for the thresholds). A manual
+# run evaluates all golden questions instead and only reports.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Evaluate every golden question instead of the smoke subset (report only, no gate)
+        type: boolean
+        default: true
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest ruff
+      - name: Ruff
+        run: ruff check .
+      - name: Pytest
+        run: pytest -q
+
+  eval:
+    needs: lint-test
+    runs-on: ubuntu-latest
+    # Pull requests from forks get no secrets, so they stop at lint and tests.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
+      JUDGE_ENDPOINT: ${{ vars.JUDGE_ENDPOINT }}
+      FULL_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check secrets
+        run: |
+          for name in GOOGLE_API_KEY JUDGE_API_KEY JUDGE_ENDPOINT; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set in the repository's Actions secrets/variables"; exit 1; fi
+          done
+
+      # The index, embeddings, cached answers and verdicts, the reranker model and
+      # the raw figures. Seeded by the first run on main, which every PR can read.
+      - name: Restore eval cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache
+            .eval_index
+            corpus/raw
+          key: eval-v1-${{ hashFiles('corpus/manifest.lock.json', 'corpus/figures.jsonl', 'corpus/docs/**') }}
+
+      - name: Build the index (cache miss)
+        id: build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          python -m rag.corpus fetch
+          # fetch re-extracts the text; the index must be built from the committed
+          # text, because the golden set's chunk ids depend on it. Warn on drift and
+          # restore the committed files (raw downloads and figure images stay).
+          if ! git diff --quiet -- corpus/docs corpus/figures.jsonl; then
+            echo "::warning::fetched corpus text differs from the committed text; building from the committed text"
+            git diff --stat -- corpus/docs corpus/figures.jsonl
+          fi
+          git checkout -- corpus/docs corpus/figures.jsonl corpus/manifest.lock.json
+          python -m rag.index build --yes
+
+      - name: Eval
+        id: eval
+        run: |
+          mkdir -p results/gate
+          if [ "$FULL_RUN" = "true" ]; then
+            python -m eval.run --config hybrid_rrf_rerank --yes --out results/gate/full.json
+          else
+            python -m eval.run --config hybrid_rrf_rerank --ids-file eval/smoke_ids.json --yes \
+              --out results/gate/current.json
+          fi
+
+      # Saved before the gate, so a failing gate still keeps the built index.
+      - name: Save eval cache
+        if: always() && steps.cache.outputs.cache-hit != 'true' && steps.build.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache
+            .eval_index
+            corpus/raw
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Gate
+        if: env.FULL_RUN != 'true'
+        run: python -m eval.gate --baseline results/baseline.json --current results/gate/current.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Full-run summary
+        if: env.FULL_RUN == 'true'
+        run: python -m eval.gate --run results/gate/full.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always() && steps.eval.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: results/gate/
+          if-no-files-found: ignore

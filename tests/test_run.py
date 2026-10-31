@@ -1,13 +1,15 @@
 """The eval runner end to end with fakes: no index, no Gemini, no Azure."""
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
-from eval.judge import FoundryJudge, is_refusal, score_generation
+from eval.judge import FoundryJudge, is_refusal, make_judge_client, score_generation
 from eval.run import RunConfig, Services, estimate, load_prices, load_run_config, run
 from rag.cache import DiskCache
 from rag.pipeline import ChromaStore
@@ -202,6 +204,22 @@ class JudgeTest(_Base):
         judge = FoundryJudge(self.cache, deployment="gpt-4.1-mini", client=self.chat)
         self.assertTrue(is_refusal(judge, "Who won?", "The sources do not say."))
         self.assertFalse(is_refusal(judge, "Who won?", "France."))
+
+
+class JudgeClientTest(unittest.TestCase):
+    def test_api_key_skips_azure_identity(self):
+        env = {"JUDGE_API_KEY": "test-key", "JUDGE_ENDPOINT": "https://example.invalid/"}
+        with (mock.patch.dict(os.environ, env), mock.patch("eval.judge.load_dotenv"),
+              mock.patch("eval.judge.DefaultAzureCredential") as credential):
+            client = make_judge_client()
+        credential.assert_not_called()
+        self.assertEqual(str(client.base_url), "https://example.invalid/openai/v1/")
+        self.assertEqual(client.api_key, "test-key")
+
+    def test_missing_endpoint_is_an_error(self):
+        with (mock.patch.dict(os.environ, {"JUDGE_ENDPOINT": ""}), mock.patch("eval.judge.load_dotenv"),
+              self.assertRaises(RuntimeError)):
+            make_judge_client()
 
 
 class ConfigTest(unittest.TestCase):

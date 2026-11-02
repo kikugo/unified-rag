@@ -79,15 +79,9 @@ jobs:
         id: build
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          python -m rag.corpus fetch
-          # fetch re-extracts the text; the index must be built from the committed
-          # text, because the golden set's chunk ids depend on it. Warn on drift and
-          # restore the committed files (raw downloads and figure images stay).
-          if ! git diff --quiet -- corpus/docs corpus/figures.jsonl; then
-            echo "::warning::fetched corpus text differs from the committed text; building from the committed text"
-            git diff --stat -- corpus/docs corpus/figures.jsonl
-          fi
-          git checkout -- corpus/docs corpus/figures.jsonl corpus/manifest.lock.json
+          # The extracted text is committed (the golden set's chunk ids depend on it),
+          # so CI only downloads the figure images, not the Wikipedia revisions.
+          python -m rag.corpus fetch --figures-only
           python -m rag.index build --yes
 
       - name: Eval

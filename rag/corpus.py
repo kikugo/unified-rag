@@ -168,14 +168,17 @@ def extract_wiki_html(html: str, max_figures: int) -> tuple[list[dict[str, Any]]
 
 # --- network -------------------------------------------------------------------
 
-def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
+RETRY_STATUS = (429, 500, 502, 503, 504)  # rate limits and transient server errors
+
+
+def _get(session: requests.Session, url: str, sleep=time.sleep, **kwargs) -> requests.Response:
     for attempt in range(4):
         resp = session.get(url, timeout=60, **kwargs)
-        if resp.status_code in (429, 503) and attempt < 3:
-            time.sleep(2 ** attempt * 2)
+        if resp.status_code in RETRY_STATUS and attempt < 3:
+            sleep(2 ** attempt * 2)
             continue
         resp.raise_for_status()
-        time.sleep(REQUEST_PAUSE_SEC)
+        sleep(REQUEST_PAUSE_SEC)
         return resp
     raise RuntimeError(f"gave up on {url}")
 

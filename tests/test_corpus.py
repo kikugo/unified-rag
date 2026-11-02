@@ -2,7 +2,9 @@ import hashlib
 import json
 import unittest
 
-from rag.corpus import CORPUS_DIR, extract_wiki_html, load_manifest
+import requests
+
+from rag.corpus import CORPUS_DIR, _get, extract_wiki_html, load_manifest
 
 # Trimmed to the Parsoid shapes the extractor depends on: nested <section>s, a
 # Commons figure, an enwiki-local figure, inline refs, an infobox table, a math
@@ -87,6 +89,37 @@ class ManifestTest(unittest.TestCase):
         for doc_id, entry in lock["documents"].items():
             data = (CORPUS_DIR / "docs" / f"{doc_id}.jsonl").read_bytes()
             self.assertEqual(hashlib.sha256(data).hexdigest(), entry["text_sha256"], doc_id)
+
+class FakeSession:
+    def __init__(self, statuses):
+        self.statuses = list(statuses)
+        self.calls = 0
+
+    def get(self, url, timeout=None, **kwargs):
+        self.calls += 1
+        resp = requests.Response()
+        resp.status_code = self.statuses.pop(0)
+        resp._content = b"ok"
+        resp.url = url
+        return resp
+
+
+class RetryTest(unittest.TestCase):
+    def test_transient_server_errors_are_retried(self):
+        for status in (500, 502, 503, 504, 429):
+            session = FakeSession([status, 200])
+            self.assertEqual(_get(session, "https://example.invalid", sleep=lambda _: None).content, b"ok")
+            self.assertEqual(session.calls, 2)
+
+    def test_client_errors_fail_at_once_and_retries_run_out(self):
+        session = FakeSession([404])
+        with self.assertRaises(requests.HTTPError):
+            _get(session, "https://example.invalid", sleep=lambda _: None)
+        self.assertEqual(session.calls, 1)
+        session = FakeSession([500, 500, 500, 500])
+        with self.assertRaises(requests.HTTPError):
+            _get(session, "https://example.invalid", sleep=lambda _: None)
+        self.assertEqual(session.calls, 4)
 
 
 if __name__ == "__main__":

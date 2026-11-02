@@ -1,10 +1,12 @@
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import requests
 
-from rag.corpus import CORPUS_DIR, _get, extract_wiki_html, load_manifest
+from rag.corpus import CORPUS_DIR, _get, extract_wiki_html, fetch_figures, load_manifest, sha256_bytes
 
 # Trimmed to the Parsoid shapes the extractor depends on: nested <section>s, a
 # Commons figure, an enwiki-local figure, inline refs, an infobox table, a math
@@ -120,6 +122,25 @@ class RetryTest(unittest.TestCase):
         with self.assertRaises(requests.HTTPError):
             _get(session, "https://example.invalid", sleep=lambda _: None)
         self.assertEqual(session.calls, 4)
+
+class FigureFetchTest(unittest.TestCase):
+    def _corpus(self, tmp, images):
+        root = Path(tmp)
+        figs = [{"image": f"raw/figures/{name}", "thumb_url": f"https://example.invalid/{name}"} for name in images]
+        (root / "figures.jsonl").write_text("".join(json.dumps(f) + "\n" for f in figs))
+        lock = {"figures": {name: {"thumb_sha256": sha256_bytes(b"ok")} for name in images}}
+        (root / "manifest.lock.json").write_text(json.dumps(lock))
+        return root
+
+    def test_downloads_missing_figures_and_skips_present_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._corpus(tmp, ["a-0.png", "b-0.png"])
+            (root / "raw/figures").mkdir(parents=True)
+            (root / "raw/figures/a-0.png").write_bytes(b"ok")
+            session = FakeSession([200])
+            self.assertEqual(fetch_figures(root, session), 0)
+            self.assertEqual(session.calls, 1, "only the missing figure is downloaded")
+            self.assertEqual((root / "raw/figures/b-0.png").read_bytes(), b"ok")
 
 
 if __name__ == "__main__":

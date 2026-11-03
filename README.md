@@ -173,6 +173,8 @@ A traced run makes real API calls instead of reading the cache, since cached ans
 
 The third check is there because the ablation shows that narrowing the answer to one context chunk leaves hit@5 alone and even raises faithfulness, while the model refuses many more questions it could have answered. A gate on hit@5 and faithfulness alone would wave that change through. The job summary lists each metric against the baseline and every question whose result changed.
 
+It catches the case it was built for: [a test pull request](https://github.com/kikugo/unified-rag/pull/8) that only sets `context_k` to 1 [fails the check](https://github.com/kikugo/unified-rag/actions/runs/41560733456) on false refusals, with hit@5 unchanged and faithfulness up.
+
 The Chroma index, embeddings, cached answers and judge verdicts live in a GitHub Actions cache, seeded by the first run on `main`, and the baseline is that run's own result, so a pull request that changes nothing makes no paid calls and reproduces it exactly. A manual run (`workflow_dispatch`) evaluates every golden question and reports without gating. Keys come from repository secrets (`GOOGLE_API_KEY`, `JUDGE_API_KEY`) and the `JUDGE_ENDPOINT` variable; pull requests from forks get no secrets and stop after lint and tests.
 
 ## Notes to self: what's left

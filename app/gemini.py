@@ -13,10 +13,10 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-from rag_core import call_with_retry
 from media_ingest import chunk_audio_bytes, decode_audio_to_wav, resize_image_if_needed
 from rag.models import EMBEDDING_MODEL, UTILITY_MODEL
 from rag.pipeline import HYDE_PROMPT, hyde_vector
+from rag_core import call_with_retry
 
 _client: genai.Client | None = None
 

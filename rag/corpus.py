@@ -168,14 +168,17 @@ def extract_wiki_html(html: str, max_figures: int) -> tuple[list[dict[str, Any]]
 
 # --- network -------------------------------------------------------------------
 
-def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
+RETRY_STATUS = (429, 500, 502, 503, 504)  # rate limits and transient server errors
+
+
+def _get(session: requests.Session, url: str, sleep=time.sleep, **kwargs) -> requests.Response:
     for attempt in range(4):
         resp = session.get(url, timeout=60, **kwargs)
-        if resp.status_code in (429, 503) and attempt < 3:
-            time.sleep(2 ** attempt * 2)
+        if resp.status_code in RETRY_STATUS and attempt < 3:
+            sleep(2 ** attempt * 2)
             continue
         resp.raise_for_status()
-        time.sleep(REQUEST_PAUSE_SEC)
+        sleep(REQUEST_PAUSE_SEC)
         return resp
     raise RuntimeError(f"gave up on {url}")
 
@@ -288,6 +291,36 @@ def fetch(corpus_dir: Path = CORPUS_DIR, verify: bool = False) -> int:
     return 0
 
 
+def fetch_figures(corpus_dir: Path = CORPUS_DIR, session: requests.Session | None = None) -> int:
+    """Download only the figure thumbnails the committed corpus refers to.
+
+    The extracted text is committed, so CI needs nothing but the images to build
+    the index. Re-rendering forty old Wikipedia revisions is slow and sometimes
+    fails server-side; the thumbnails come from Wikimedia's static file servers.
+    A thumbnail whose hash differs from the lock is kept with a warning: Commons
+    occasionally re-encodes a thumbnail without changing the file.
+    """
+    lock = json.loads((corpus_dir / "manifest.lock.json").read_text(encoding="utf-8")).get("figures", {})
+    figures = [json.loads(line) for line in (corpus_dir / "figures.jsonl").read_text(encoding="utf-8").splitlines()
+               if line.strip()]
+    if session is None:
+        session = requests.Session()
+        session.headers["User-Agent"] = USER_AGENT
+    fetched = drifted = 0
+    for fig in figures:
+        path = corpus_dir / fig["image"]
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(_get(session, fig["thumb_url"]).content)
+            fetched += 1
+        expected = lock.get(path.name, {}).get("thumb_sha256")
+        if expected and sha256_bytes(path.read_bytes()) != expected:
+            drifted += 1
+            print(f"warning: {path.name} differs from the lock")
+    print(f"{len(figures)} figures present ({fetched} downloaded, {drifted} differ from the lock)")
+    return 0
+
+
 def _diff_lock(old: dict[str, Any], new: dict[str, Any]) -> int:
     if not old:
         print("no manifest.lock.json to verify against; run fetch first")
@@ -309,9 +342,11 @@ def main(argv: list[str] | None = None) -> int:
     fetch_p = sub.add_parser("fetch", help="download the pinned sources and extract text")
     fetch_p.add_argument("--verify", action="store_true",
                          help="re-download and compare with manifest.lock.json without writing")
+    fetch_p.add_argument("--figures-only", action="store_true",
+                         help="only download the figure images the committed corpus uses (what CI needs)")
     args = parser.parse_args(argv)
     if args.command == "fetch":
-        return fetch(verify=args.verify)
+        return fetch_figures() if args.figures_only else fetch(verify=args.verify)
     return 2
 
 

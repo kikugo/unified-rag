@@ -18,8 +18,9 @@ import random
 import re
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from google.genai import types
 
@@ -61,12 +62,14 @@ IDENTIFIER_RE = re.compile(
     r"|Directive\s+(\(EU\)\s+)?\d+/\d+|Executive Order\s+\d+|(19|20)\d{2}"
     r"|[A-Z][A-Za-z]*-?\d+[A-Za-z0-9.]*|[A-Z]{2,}\d*)\b"
 )
-STOPWORDS = set("""
-a an the and or of to in on for by with from as at is are was were be been being this that these those
-it its which who whom what when where why how does do did can could should would may might must shall will
-not no than then there their they them he she his her we our you your i into about over under between
-such any all each other more most some also only very much many one two
-""".split())
+STOPWORDS = {
+    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "by", "with", "from", "as", "at", "is", "are",
+    "was", "were", "be", "been", "being", "this", "that", "these", "those", "it", "its", "which", "who", "whom",
+    "what", "when", "where", "why", "how", "does", "do", "did", "can", "could", "should", "would", "may",
+    "might", "must", "shall", "will", "not", "no", "than", "then", "there", "their", "they", "them", "he",
+    "she", "his", "her", "we", "our", "you", "your", "i", "into", "about", "over", "under", "between", "such",
+    "any", "all", "each", "other", "more", "most", "some", "also", "only", "very", "much", "many", "one", "two",
+}
 
 SCHEMA = {
     "type": "object",
@@ -116,7 +119,8 @@ TYPE_RULES = {
         "figure or a private opinion. Set answer to an empty string and evidence to an empty list."
     ),
 }
-FIGURE_RULE = "The source is a figure (image plus caption). Ask about what the figure shows; quote the caption as evidence."
+FIGURE_RULE = ("The source is a figure (image plus caption). Ask about what the figure shows; "
+               "quote the caption as evidence.")
 
 
 def content_words(text: str) -> set[str]:

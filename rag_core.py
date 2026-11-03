@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from copy import copy
 import math
 import re
 import time
-from typing import Any, Callable
-
+from collections.abc import Callable
+from copy import copy
+from typing import Any
 
 LOCAL_BACKEND = "local"
 MANAGED_BACKEND = "managed"

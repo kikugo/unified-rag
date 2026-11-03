@@ -6,9 +6,9 @@ an ablation row measures the code the app ships, not a copy of it.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
-from collections.abc import Callable
 
 import numpy as np
 from google.genai import types

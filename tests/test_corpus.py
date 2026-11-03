@@ -1,8 +1,12 @@
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from rag.corpus import CORPUS_DIR, extract_wiki_html, load_manifest
+import requests
+
+from rag.corpus import CORPUS_DIR, _get, extract_wiki_html, fetch_figures, load_manifest, sha256_bytes
 
 # Trimmed to the Parsoid shapes the extractor depends on: nested <section>s, a
 # Commons figure, an enwiki-local figure, inline refs, an infobox table, a math
@@ -87,6 +91,56 @@ class ManifestTest(unittest.TestCase):
         for doc_id, entry in lock["documents"].items():
             data = (CORPUS_DIR / "docs" / f"{doc_id}.jsonl").read_bytes()
             self.assertEqual(hashlib.sha256(data).hexdigest(), entry["text_sha256"], doc_id)
+
+class FakeSession:
+    def __init__(self, statuses):
+        self.statuses = list(statuses)
+        self.calls = 0
+
+    def get(self, url, timeout=None, **kwargs):
+        self.calls += 1
+        resp = requests.Response()
+        resp.status_code = self.statuses.pop(0)
+        resp._content = b"ok"
+        resp.url = url
+        return resp
+
+
+class RetryTest(unittest.TestCase):
+    def test_transient_server_errors_are_retried(self):
+        for status in (500, 502, 503, 504, 429):
+            session = FakeSession([status, 200])
+            self.assertEqual(_get(session, "https://example.invalid", sleep=lambda _: None).content, b"ok")
+            self.assertEqual(session.calls, 2)
+
+    def test_client_errors_fail_at_once_and_retries_run_out(self):
+        session = FakeSession([404])
+        with self.assertRaises(requests.HTTPError):
+            _get(session, "https://example.invalid", sleep=lambda _: None)
+        self.assertEqual(session.calls, 1)
+        session = FakeSession([500, 500, 500, 500])
+        with self.assertRaises(requests.HTTPError):
+            _get(session, "https://example.invalid", sleep=lambda _: None)
+        self.assertEqual(session.calls, 4)
+
+class FigureFetchTest(unittest.TestCase):
+    def _corpus(self, tmp, images):
+        root = Path(tmp)
+        figs = [{"image": f"raw/figures/{name}", "thumb_url": f"https://example.invalid/{name}"} for name in images]
+        (root / "figures.jsonl").write_text("".join(json.dumps(f) + "\n" for f in figs))
+        lock = {"figures": {name: {"thumb_sha256": sha256_bytes(b"ok")} for name in images}}
+        (root / "manifest.lock.json").write_text(json.dumps(lock))
+        return root
+
+    def test_downloads_missing_figures_and_skips_present_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._corpus(tmp, ["a-0.png", "b-0.png"])
+            (root / "raw/figures").mkdir(parents=True)
+            (root / "raw/figures/a-0.png").write_bytes(b"ok")
+            session = FakeSession([200])
+            self.assertEqual(fetch_figures(root, session), 0)
+            self.assertEqual(session.calls, 1, "only the missing figure is downloaded")
+            self.assertEqual((root / "raw/figures/b-0.png").read_bytes(), b"ok")
 
 
 if __name__ == "__main__":

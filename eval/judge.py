@@ -44,13 +44,21 @@ Reply with JSON only: {{"refused": true}} or {{"refused": false}}."""
 
 
 def make_judge_client(endpoint: str | None = None) -> OpenAI:
-    """OpenAI client on the Foundry v1 endpoint, authenticated with an Entra token."""
+    """OpenAI client on the Foundry v1 endpoint.
+
+    Uses JUDGE_API_KEY when it is set (CI stores it as a GitHub secret);
+    otherwise an Entra token from the local `az login` session.
+    """
     load_dotenv()
     endpoint = endpoint or os.getenv("JUDGE_ENDPOINT")
     if not endpoint:
         raise RuntimeError("set JUDGE_ENDPOINT to the Foundry resource endpoint to run the judge")
+    base_url = f"{endpoint.rstrip('/')}/openai/v1/"
+    api_key = os.getenv("JUDGE_API_KEY")
+    if api_key:
+        return OpenAI(base_url=base_url, api_key=api_key)
     token_provider = get_bearer_token_provider(DefaultAzureCredential(), TOKEN_SCOPE)
-    return OpenAI(base_url=f"{endpoint.rstrip('/')}/openai/v1/", api_key=token_provider)
+    return OpenAI(base_url=base_url, api_key=token_provider)
 
 
 class FoundryJudge(DeepEvalBaseLLM):

@@ -41,8 +41,8 @@ class ReportError(ValueError):
 def load_results(results_dir: Path = RESULTS_DIR) -> dict[str, dict[str, Any]]:
     results = {}
     for path in sorted(results_dir.glob("*.json")):
-        if path.name.endswith(".partial.json"):
-            continue
+        if path.name.endswith(".partial.json") or path.name == "baseline.json":
+            continue  # partial runs and the CI gate's smoke baseline aren't ablation configs
         results[path.stem] = json.loads(path.read_text(encoding="utf-8"))
     if not results:
         raise ReportError(f"no results in {results_dir}; run python -m eval.run --config <name> first")

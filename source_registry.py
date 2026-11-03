@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 REGISTRY_PATH = Path(".unified_rag_store/source_registry.json")
 
 

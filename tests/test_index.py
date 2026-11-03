@@ -111,7 +111,8 @@ class IndexRebuildTest(unittest.TestCase):
 
     def test_keyword_query_finds_its_page(self):
         self._build()
-        hits = retrieve("Annex III high-risk", Config(mode="bm25", top_k=1, context_k=1), open_store(self.index_dir, DIM))
+        cfg = Config(mode="bm25", top_k=1, context_k=1)
+        hits = retrieve("Annex III high-risk", cfg, open_store(self.index_dir, DIM))
         self.assertEqual((hits[0].metadata["doc_id"], hits[0].metadata["page"]), ("law", 2))
 
 

@@ -1,34 +1,34 @@
+import base64
 import io
 import json
+import os
+import tempfile
+import time
+import uuid
+
+import chromadb
+import numpy as np
+import pandas as pd
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import numpy as np
-import pandas as pd
-import base64
-import uuid
-import tempfile
-import time
-import os
-from PIL import Image
 from google import genai
 from google.genai import types
-import chromadb
-from rag_core import (
-    MANAGED_BACKEND,
-    build_local_answer_prompt,
-    build_rehydrated_sources,
-    call_with_retry,
-    format_prompt_cost,
-    is_transient_error,
-    pop_source_by_id,
-    select_context_results,
-    source_artifacts,
-    within_demo_upload_cap,
+from PIL import Image
+
+from app import gemini
+from app.gemini import (
+    auto_caption_image,
+    embed_audio,
+    embed_image,
+    embed_image_with_caption,
+    embed_pdf,
+    hyde_query_embedding,
+    route_query,
+    transcribe_audio_bytes,
+    transcribe_video_audio,
 )
 from media_ingest import (
-    AUDIO_MAX_SECONDS,
-    FRAME_INTERVAL_SEC,
     VIDEO_MAX_SECONDS,
     attach_transcript_metadata,
     build_audio_searchable_text,
@@ -46,22 +46,21 @@ from media_ingest import (
     select_scene_frames,
     transcript_for_timestamp,
 )
-from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
-from source_registry import delete_source, list_sources, upsert_source
-from app import gemini
 from rag.models import ANSWER_MODEL, DEMO_ANSWER_MODEL, EMBEDDING_MODEL
 from rag.pipeline import ChromaStore, Config, build_answer_contents, retrieve
-from app.gemini import (
-    auto_caption_image,
-    embed_audio,
-    embed_image,
-    embed_image_with_caption,
-    embed_pdf,
-    hyde_query_embedding,
-    route_query,
-    transcribe_audio_bytes,
-    transcribe_video_audio,
+from rag_core import (
+    MANAGED_BACKEND,
+    build_rehydrated_sources,
+    call_with_retry,
+    format_prompt_cost,
+    is_transient_error,
+    pop_source_by_id,
+    select_context_results,
+    source_artifacts,
+    within_demo_upload_cap,
 )
+from source_registry import delete_source, list_sources, upsert_source
+from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
 
 # Demo deployment settings. Unset (the default) runs with no limits and the
 # full Pro-backed Managed RAG path, same as a local clone.
@@ -187,7 +186,8 @@ with st.sidebar:
     )
     google_api_key = (_typed_key or "").strip() or HOSTED_KEY
     if not _typed_key and HOSTED_KEY:
-        st.caption("✅ Running on a shared demo key, so you can try it without signing up. Paste your own to use it instead.")
+        st.caption("✅ Running on a shared demo key, so you can try it without signing up. "
+                   "Paste your own to use it instead.")
     else:
         "[Get a Google API key](https://aistudio.google.com/app/apikey)"
         st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
@@ -235,7 +235,8 @@ with st.sidebar:
             "Transcribe audio (speech-to-text)",
             value=True,
             key="transcribe_audio",
-            help="Use Gemini to transcribe each audio chunk so spoken words become searchable. Adds one API call per chunk.",
+            help="Use Gemini to transcribe each audio chunk so spoken words become searchable. "
+                 "Adds one API call per chunk.",
         )
     if _has_video:
         scene_sampling = st.checkbox(
@@ -343,7 +344,8 @@ with st.sidebar:
             "Expand query (HyDE)",
             value=False,
             key="use_hyde",
-            help="Draft a hypothetical answer, embed it, and average with your question's embedding. Adds a Gemini call per search.",
+            help="Draft a hypothetical answer, embed it, and average with your question's embedding. "
+                 "Adds a Gemini call per search.",
         )
         st.caption("Advanced vector storage (ChromaDB) — leave blank for a local database.")
         st.text_input("Chroma Tenant", value="", key="chroma_tenant")
@@ -484,7 +486,8 @@ def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str, conte
             config={'display_name': file_name}
         )
         # Add to UI state so it shows in the gallery
-        doc_type = "pdf" if mime == "application/pdf" else ("audio" if "audio" in mime else ("video" if "video" in mime else "image"))
+        doc_type = ("pdf" if mime == "application/pdf"
+                    else "audio" if "audio" in mime else "video" if "video" in mime else "image")
         st.session_state.doc_sources.append({
             "source_id": str(uuid.uuid4()),
             "name": file_name,
@@ -905,7 +908,7 @@ if uploaded_files:
         elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
             audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
             audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
-            for chunk_idx, (chunk_bytes, start_sec, end_sec, chunk_mime) in enumerate(audio_chunks, start=1):
+            for chunk_bytes, start_sec, end_sec, chunk_mime in audio_chunks:
                 emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
                 if emb is not None:
                     label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
@@ -1114,7 +1117,8 @@ else:
                     st.rerun()
 
     # Chat input — a starter-prompt click feeds in via pending_query
-    query = st.chat_input("Ask a question about your documents…", key="chat_input") or st.session_state.pop("pending_query", None)
+    query = (st.chat_input("Ask a question about your documents…", key="chat_input")
+             or st.session_state.pop("pending_query", None))
 
     if query:
         st.session_state.last_usage = None  # reset; populated by the answer call

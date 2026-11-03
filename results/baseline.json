@@ -1,0 +1,1597 @@
+{
+ "meta": {
+  "config": {
+   "name": "hybrid_rrf_rerank",
+   "mode": "hybrid_rrf",
+   "rerank": true,
+   "hyde": false,
+   "context_k": 3,
+   "candidate_k": 20,
+   "rrf_k": 60,
+   "generator": "gemini-3.6-flash"
+  },
+  "retrieval_depth": 10,
+  "embedding_model": "gemini-embedding-2-preview",
+  "judge": {
+   "model": "gpt-4.1-mini",
+   "version": "2025-04-14",
+   "deployment": "gpt-4.1-mini",
+   "temperature": 0
+  },
+  "golden_sha256_16": "95dc70970cba9c8a",
+  "prices_checked": "2026-10-26",
+  "git": {
+   "sha": "9c437e3bc02595d319008848694d79aefdb0e02e",
+   "dirty": true
+  },
+  "paid_calls_this_run": {
+   "answer": 0,
+   "judge_row": 0,
+   "query": 0
+  }
+ },
+ "totals": {
+  "n": 20,
+  "n_answerable": 18,
+  "n_unanswerable": 2,
+  "hit@1": 0.6111111111111112,
+  "hit@3": 0.7777777777777778,
+  "hit@5": 0.8333333333333334,
+  "mrr@10": 0.6777777777777777,
+  "recall@5": 0.8055555555555556,
+  "hit@5_ci95": [
+   0.6666666666666666,
+   1.0
+  ],
+  "multihop_recall@5": 0.75,
+  "citation_correctness": 0.45370370370370366,
+  "no_citation_rate": 0.0,
+  "refusal_accuracy": 1.0,
+  "false_refusal_rate": 0.16666666666666666,
+  "faithfulness": 0.9433333333333334,
+  "faithfulness_ci95": [
+   0.8666666666666667,
+   1.0
+  ],
+  "answer_relevancy": 0.9656565656565657,
+  "n_generation_judged": 15,
+  "latency_ms": {
+   "embed": {
+    "p50": 315.93770801555365,
+    "p95": 659.5443062600681
+   },
+   "retrieve": {
+    "p50": 433.47972897754516,
+    "p95": 756.9000405070257
+   },
+   "rerank": {
+    "p50": 212.87487499648705,
+    "p95": 567.6975702022902
+   },
+   "generate": {
+    "p50": 4061.493541521486,
+    "p95": 10413.245843746701
+   },
+   "total": {
+    "p50": 4739.9962930358015,
+    "p95": 11026.236271123345
+   }
+  },
+  "tokens_per_query": {
+   "generate_input": 914.4,
+   "generate_output": 702.8,
+   "embed": 26.75,
+   "hyde_input": 0.0,
+   "hyde_output": 0.0
+  },
+  "cost_usd_per_query": 0.0033266499999999996,
+  "cost_usd_per_100_queries": 0.33266499999999993,
+  "judge_cost_usd_total": 0.0456284
+ },
+ "by_type": {
+  "factual": {
+   "n": 8,
+   "n_answerable": 8,
+   "n_unanswerable": 0,
+   "hit@1": 0.625,
+   "hit@3": 0.875,
+   "hit@5": 1.0,
+   "mrr@10": 0.7333333333333333,
+   "recall@5": 1.0,
+   "hit@5_ci95": [
+    1.0,
+    1.0
+   ],
+   "multihop_recall@5": null,
+   "citation_correctness": 0.4166666666666667,
+   "no_citation_rate": 0.0,
+   "refusal_accuracy": null,
+   "false_refusal_rate": 0.125,
+   "faithfulness": 1.0,
+   "faithfulness_ci95": [
+    1.0,
+    1.0
+   ],
+   "answer_relevancy": 0.9523809523809524,
+   "n_generation_judged": 7,
+   "latency_ms": {
+    "embed": {
+     "p50": 315.67481253296137,
+     "p95": 663.4816793899519
+    },
+    "retrieve": {
+     "p50": 441.4171664539026,
+     "p95": 789.4501898321325
+    },
+    "rerank": {
+     "p50": 255.85260399384424,
+     "p95": 515.5677932023536
+    },
+    "generate": {
+     "p50": 3116.906333481893,
+     "p95": 5212.016960151959
+    },
+    "total": {
+     "p50": 4179.094624880236,
+     "p95": 5981.689884648949
+    }
+   },
+   "tokens_per_query": {
+    "generate_input": 1006.25,
+    "generate_output": 521.25,
+    "embed": 24.375,
+    "hyde_input": 0.0,
+    "hyde_output": 0.0
+   },
+   "cost_usd_per_query": 0.00271425,
+   "cost_usd_per_100_queries": 0.271425,
+   "judge_cost_usd_total": 0.017317600000000002
+  },
+  "keyword": {
+   "n": 4,
+   "n_answerable": 4,
+   "n_unanswerable": 0,
+   "hit@1": 0.75,
+   "hit@3": 0.75,
+   "hit@5": 0.75,
+   "mrr@10": 0.75,
+   "recall@5": 0.75,
+   "hit@5_ci95": [
+    0.25,
+    1.0
+   ],
+   "multihop_recall@5": null,
+   "citation_correctness": 0.4583333333333333,
+   "no_citation_rate": 0.0,
+   "refusal_accuracy": null,
+   "false_refusal_rate": 0.0,
+   "faithfulness": 0.9375,
+   "faithfulness_ci95": [
+    0.8125,
+    1.0
+   ],
+   "answer_relevancy": 0.9772727272727273,
+   "n_generation_judged": 4,
+   "latency_ms": {
+    "embed": {
+     "p50": 304.6403544722125,
+     "p95": 367.3599562840536
+    },
+    "retrieve": {
+     "p50": 441.430604463676,
+     "p95": 556.1038462925353
+    },
+    "rerank": {
+     "p50": 246.6692080051871,
+     "p95": 626.9197561981855
+    },
+    "generate": {
+     "p50": 5170.098916511051,
+     "p95": 7159.555973159149
+    },
+    "total": {
+     "p50": 6094.1372294473695,
+     "p95": 7836.711118723906
+    }
+   },
+   "tokens_per_query": {
+    "generate_input": 910.5,
+    "generate_output": 744.25,
+    "embed": 31.75,
+    "hyde_input": 0.0,
+    "hyde_output": 0.0
+   },
+   "cost_usd_per_query": 0.0034801625,
+   "cost_usd_per_100_queries": 0.34801624999999997,
+   "judge_cost_usd_total": 0.0124236
+  },
+  "paraphrase": {
+   "n": 4,
+   "n_answerable": 4,
+   "n_unanswerable": 0,
+   "hit@1": 0.5,
+   "hit@3": 0.5,
+   "hit@5": 0.5,
+   "mrr@10": 0.5,
+   "recall@5": 0.5,
+   "hit@5_ci95": [
+    0.0,
+    1.0
+   ],
+   "multihop_recall@5": null,
+   "citation_correctness": 0.5,
+   "no_citation_rate": 0.0,
+   "refusal_accuracy": null,
+   "false_refusal_rate": 0.25,
+   "faithfulness": 0.8333333333333334,
+   "faithfulness_ci95": [
+    0.5,
+    1.0
+   ],
+   "answer_relevancy": 0.9696969696969697,
+   "n_generation_judged": 3,
+   "latency_ms": {
+    "embed": {
+     "p50": 325.9626455255784,
+     "p95": 430.193691077875
+    },
+    "retrieve": {
+     "p50": 429.2222910153214,
+     "p95": 526.9745373312617
+    },
+    "rerank": {
+     "p50": 191.14656250167172,
+     "p95": 258.0797375019756
+    },
+    "generate": {
+     "p50": 5352.914708433673,
+     "p95": 10915.227575029712
+    },
+    "total": {
+     "p50": 5999.5819369505625,
+     "p95": 11535.459762511891
+    }
+   },
+   "tokens_per_query": {
+    "generate_input": 810.5,
+    "generate_output": 945.0,
+    "embed": 24.5,
+    "hyde_input": 0.0,
+    "hyde_output": 0.0
+   },
+   "cost_usd_per_query": 0.0041565249999999995,
+   "cost_usd_per_100_queries": 0.4156524999999999,
+   "judge_cost_usd_total": 0.0104288
+  },
+  "multihop": {
+   "n": 2,
+   "n_answerable": 2,
+   "n_unanswerable": 0,
+   "hit@1": 0.5,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 0.6666666666666666,
+   "recall@5": 0.75,
+   "hit@5_ci95": [
+    1.0,
+    1.0
+   ],
+   "multihop_recall@5": 0.75,
+   "citation_correctness": 0.5,
+   "no_citation_rate": 0.0,
+   "refusal_accuracy": null,
+   "false_refusal_rate": 0.5,
+   "faithfulness": 0.9,
+   "faithfulness_ci95": [
+    0.9,
+    0.9
+   ],
+   "answer_relevancy": 1.0,
+   "n_generation_judged": 1,
+   "latency_ms": {
+    "embed": {
+     "p50": 322.25497951731086,
+     "p95": 323.18496078951284
+    },
+    "retrieve": {
+     "p50": 418.08850048983004,
+     "p95": 419.0254756351351
+    },
+    "rerank": {
+     "p50": 186.0029584786389,
+     "p95": 195.14609582838602
+    },
+    "generate": {
+     "p50": 7280.1126664853655,
+     "p95": 10035.019266646123
+    },
+    "total": {
+     "p50": 7884.204125453834,
+     "p95": 10647.316887819034
+    }
+   },
+   "tokens_per_query": {
+    "generate_input": 760.0,
+    "generate_output": 1127.5,
+    "embed": 26.5,
+    "hyde_input": 0.0,
+    "hyde_output": 0.0
+   },
+   "cost_usd_per_query": 0.004803425,
+   "cost_usd_per_100_queries": 0.4803425,
+   "judge_cost_usd_total": 0.0053104
+  },
+  "unanswerable": {
+   "n": 2,
+   "n_answerable": 0,
+   "n_unanswerable": 2,
+   "hit@1": null,
+   "hit@3": null,
+   "hit@5": null,
+   "mrr@10": null,
+   "recall@5": null,
+   "hit@5_ci95": null,
+   "multihop_recall@5": null,
+   "citation_correctness": null,
+   "no_citation_rate": null,
+   "refusal_accuracy": 1.0,
+   "false_refusal_rate": null,
+   "faithfulness": null,
+   "faithfulness_ci95": null,
+   "answer_relevancy": null,
+   "n_generation_judged": 0,
+   "latency_ms": {
+    "embed": {
+     "p50": 482.25808300776407,
+     "p95": 635.5156333127525
+    },
+    "retrieve": {
+     "p50": 579.3124165065819,
+     "p95": 730.8801425606362
+    },
+    "rerank": {
+     "p50": 191.85795848898124,
+     "p95": 206.06157082802383
+    },
+    "generate": {
+     "p50": 3161.558979540132,
+     "p95": 3165.859085507691
+    },
+    "total": {
+     "p50": 3932.729354535695,
+     "p95": 4074.3935742182657
+    }
+   },
+   "tokens_per_query": {
+    "generate_input": 917.0,
+    "generate_output": 437.0,
+    "embed": 31.0,
+    "hyde_input": 0.0,
+    "hyde_output": 0.0
+   },
+   "cost_usd_per_query": 0.0023327,
+   "cost_usd_per_100_queries": 0.23327,
+   "judge_cost_usd_total": 0.00014800000000000002
+  }
+ },
+ "rows": [
+  {
+   "id": "g002",
+   "type": "factual",
+   "answerable": true,
+   "question": "What behavior does a model initially display during the interpretability phenomenon known as grokking?",
+   "gold_chunk_ids": [
+    "db72c4657974b6b7"
+   ],
+   "ranked": [
+    "db72c4657974b6b7",
+    "13c19118dd4fceba",
+    "08b1eb821065ea3f",
+    "a262ae2fd7caac7c",
+    "7705c0d5136b04c9",
+    "0821b56c33a00c03",
+    "5bfdb9f932177221",
+    "9cb5b72963fd39a7",
+    "38ead273668cab5a",
+    "b5b5af7183d63f4b"
+   ],
+   "context_ids": [
+    "db72c4657974b6b7",
+    "13c19118dd4fceba",
+    "08b1eb821065ea3f"
+   ],
+   "answer": "During the phenomenon known as grokking, the model initially memorizes the training set (overfitting) before later learning to actually perform the calculation [S2].",
+   "cited_ids": [
+    "13c19118dd4fceba"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the behavior a model displays during grokking without including any irrelevant information.",
+   "judge_input_tokens": 2785,
+   "judge_output_tokens": 571,
+   "latency_ms": {
+    "dense": 2.3972079798113555,
+    "bm25": 207.4480839946773,
+    "fuse": 0.02066700835712254,
+    "embed": 288.1460839416832,
+    "retrieve": 498.01204292452894,
+    "rerank": 281.74849998322316,
+    "generate": 3135.9136250102893,
+    "total": 3915.6741679180413
+   },
+   "tokens": {
+    "generate_input": 1572,
+    "generate_output": 395,
+    "embed": 19,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00266405,
+   "judge_cost_usd": 0.0020276
+  },
+  {
+   "id": "g007",
+   "type": "factual",
+   "answerable": true,
+   "question": "Why should certain AI systems used for democratic processes and the administration of justice be classified as high-risk under the EU Artificial Intelligence Act?",
+   "gold_chunk_ids": [
+    "bfc700a5e8fad071"
+   ],
+   "ranked": [
+    "bfc700a5e8fad071",
+    "2b0e025fbcca3b53",
+    "725c1f67d09ee7d3",
+    "f97b0a6cefb97c39",
+    "0505e4e36859bceb",
+    "4edf8623aa4848db",
+    "6ca5bdaaa0f42b18",
+    "db2da647069a2cbc",
+    "60fc852fdfe02589",
+    "178003a58d50cf03"
+   ],
+   "context_ids": [
+    "bfc700a5e8fad071",
+    "2b0e025fbcca3b53",
+    "725c1f67d09ee7d3"
+   ],
+   "answer": "Based on the provided sources, certain AI systems intended for the administration of justice and democratic processes should be classified as high-risk for the following reasons:\n\n* **Impact on Fundamental Principles and Rights:** They have a potentially significant impact on democracy, the rule of law, individual freedoms, as well as the right to an effective remedy and to a fair trial [S1].\n* **Mitigating Systemic Risks:** High-risk classification is necessary to address the risks of potential biases, errors, and opacity associated with these systems [S1], [S2].",
+   "cited_ids": [
+    "bfc700a5e8fad071",
+    "2b0e025fbcca3b53"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.5,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses why certain AI systems in democratic processes and justice administration are classified as high-risk under the EU AI Act, with no irrelevant information included.",
+   "judge_input_tokens": 3586,
+   "judge_output_tokens": 1066,
+   "latency_ms": {
+    "dense": 0.9659169882070273,
+    "bm25": 127.77954098419286,
+    "fuse": 0.022916996385902166,
+    "embed": 319.9035000288859,
+    "retrieve": 448.6718749976717,
+    "rerank": 561.3069160026498,
+    "generate": 4830.974042066373,
+    "total": 5840.952833066694
+   },
+   "tokens": {
+    "generate_input": 986,
+    "generate_output": 648,
+    "embed": 28,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0031751,
+   "judge_cost_usd": 0.00314
+  },
+  {
+   "id": "g010",
+   "type": "factual",
+   "answerable": true,
+   "question": "Under the EU Artificial Intelligence Act, which campaign-related tools are excluded from the category of AI systems intended to influence election outcomes?",
+   "gold_chunk_ids": [
+    "168315bc94f3a1e3"
+   ],
+   "ranked": [
+    "168315bc94f3a1e3",
+    "f97b0a6cefb97c39",
+    "2b0e025fbcca3b53",
+    "67735f3346362748",
+    "c637263cd03095ee",
+    "2eefbef4a52de4ce",
+    "256eef238780ba2f",
+    "bc287ba1c7c9cf7d",
+    "2d8117336aec1571",
+    "6c430f7f9c0741b7"
+   ],
+   "context_ids": [
+    "168315bc94f3a1e3",
+    "f97b0a6cefb97c39",
+    "2b0e025fbcca3b53"
+   ],
+   "answer": "Under the EU Artificial Intelligence Act, the tools excluded from this category are AI systems whose output natural persons are not directly exposed to [S1], [S2]. \n\nSpecifically, this exception includes tools used to organize, optimize, or structure political campaigns from an administrative or logistical point of view [S1], [S2].",
+   "cited_ids": [
+    "168315bc94f3a1e3",
+    "f97b0a6cefb97c39"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.5,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the question without including any irrelevant information, providing a clear and focused answer.",
+   "judge_input_tokens": 3052,
+   "judge_output_tokens": 636,
+   "latency_ms": {
+    "dense": 5.19749999511987,
+    "bm25": 133.53808299871162,
+    "fuse": 0.020832987502217293,
+    "embed": 792.5453749485314,
+    "retrieve": 931.3017909298651,
+    "rerank": 430.6237080018036,
+    "generate": 3080.5895829107612,
+    "total": 4442.51508184243
+   },
+   "tokens": {
+    "generate_input": 843,
+    "generate_output": 490,
+    "embed": 27,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00247515,
+   "judge_cost_usd": 0.0022384
+  },
+  {
+   "id": "g011",
+   "type": "factual",
+   "answerable": true,
+   "question": "Under the EU Artificial Intelligence Act, what action have national data protection authorities already taken regarding remote biometric identification for purposes other than law enforcement?",
+   "gold_chunk_ids": [
+    "34dbb2d038c4b427"
+   ],
+   "ranked": [
+    "800c67786942fa8f",
+    "1e8c68a9e6265728",
+    "34dbb2d038c4b427",
+    "1da12e8bedd407f7",
+    "b5b4e1a0decfb8d9",
+    "244cc1377a374ba8",
+    "33f168ee27923bab",
+    "3f591d9cc842825c",
+    "0bd22cade6dc658e",
+    "e237196b97f46f82"
+   ],
+   "context_ids": [
+    "800c67786942fa8f",
+    "1e8c68a9e6265728",
+    "34dbb2d038c4b427"
+   ],
+   "answer": "Based on the provided sources, national data protection authorities have already issued **prohibition decisions** regarding the use of remote biometric identification for purposes other than law enforcement [S1], [S3].",
+   "cited_ids": [
+    "800c67786942fa8f",
+    "34dbb2d038c4b427"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 0.3333333333333333,
+   "recall@5": 1.0,
+   "citation_correctness": 0.5,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the question without including any irrelevant information.",
+   "judge_input_tokens": 3172,
+   "judge_output_tokens": 600,
+   "latency_ms": {
+    "dense": 2.037958998698741,
+    "bm25": 119.29375000181608,
+    "fuse": 0.019166007405146956,
+    "embed": 311.44612503703684,
+    "retrieve": 432.7970000449568,
+    "rerank": 316.9149159803055,
+    "generate": 3097.8990419534966,
+    "total": 3847.610957978759
+   },
+   "tokens": {
+    "generate_input": 1030,
+    "generate_output": 421,
+    "embed": 28,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00235685,
+   "judge_cost_usd": 0.0022288
+  },
+  {
+   "id": "g017",
+   "type": "factual",
+   "answerable": true,
+   "question": "What type of report may an AI system provider or deployer submit to ensure the timely reporting of a serious incident?",
+   "gold_chunk_ids": [
+    "b62e00c868dde9b7"
+   ],
+   "ranked": [
+    "b62e00c868dde9b7",
+    "7412a819556e27df",
+    "cd0062a936efd35b",
+    "8667741748b34eda",
+    "0bc5a4ac026c8fd6",
+    "89279a8bfabc561b",
+    "39d06675bf2e795d",
+    "3e65195e25b6ca92",
+    "1da12e8bedd407f7",
+    "a4482b946657c49e"
+   ],
+   "context_ids": [
+    "b62e00c868dde9b7",
+    "7412a819556e27df",
+    "cd0062a936efd35b"
+   ],
+   "answer": "Based on source [S1], to ensure timely reporting of a serious incident, a provider or deployer may submit an **initial report that is incomplete**, which must then be followed by a complete report [S1].",
+   "cited_ids": [
+    "b62e00c868dde9b7"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 1.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 0.6666666666666666,
+   "answer_relevancy_reason": "The score is 0.67 because the response addresses the type of report to be submitted but includes an irrelevant statement about the source reference, which does not directly answer the question.",
+   "judge_input_tokens": 3203,
+   "judge_output_tokens": 715,
+   "latency_ms": {
+    "dense": 1.453917007893324,
+    "bm25": 98.70212501846254,
+    "fuse": 0.01783299376256764,
+    "embed": 298.05333295371383,
+    "retrieve": 398.22720797383226,
+    "rerank": 229.95670800446533,
+    "generate": 2537.2700409498066,
+    "total": 3165.453956928104
+   },
+   "tokens": {
+    "generate_input": 986,
+    "generate_output": 378,
+    "embed": 24,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0021618,
+   "judge_cost_usd": 0.0024251999999999998
+  },
+  {
+   "id": "g021",
+   "type": "factual",
+   "answerable": true,
+   "question": "In what year did the Council of Europe start assessing the need for legally binding artificial intelligence regulation?",
+   "gold_chunk_ids": [
+    "831dc255a9715204"
+   ],
+   "ranked": [
+    "7e0fa57334d8e3cb",
+    "86168c74940a561f",
+    "21f3ee65341237ac",
+    "fe8ce1f2f0f7961d",
+    "831dc255a9715204",
+    "c07b2b13eca08924",
+    "c3050a3b0e9ca26f",
+    "cd7fdd11581c2690",
+    "e023bfe390731c26",
+    "ef815928cf15795e"
+   ],
+   "context_ids": [
+    "7e0fa57334d8e3cb",
+    "86168c74940a561f",
+    "21f3ee65341237ac"
+   ],
+   "answer": "Based on the provided sources, the specific year in which the Council of Europe started assessing the need for legally binding AI regulation is not mentioned. \n\nThe sources only note that treaty negotiations involving the Council of Europe's member states began in September 2022, leading to the treaty's adoption in May 2024 [S1].",
+   "cited_ids": [
+    "7e0fa57334d8e3cb"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 0.0,
+   "hit@5": 1.0,
+   "mrr@10": 0.2,
+   "recall@5": 1.0,
+   "citation_correctness": 0.0,
+   "refused": true,
+   "judge_input_tokens": 188,
+   "judge_output_tokens": 6,
+   "latency_ms": {
+    "dense": 3.1169159919954836,
+    "bm25": 96.09712500241585,
+    "fuse": 0.01679197885096073,
+    "embed": 334.93162493687123,
+    "retrieve": 434.1624579101335,
+    "rerank": 206.11500000813976,
+    "generate": 5417.193916044198,
+    "total": 6057.471373962471
+   },
+   "tokens": {
+    "generate_input": 980,
+    "generate_output": 913,
+    "embed": 20,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00416275,
+   "judge_cost_usd": 8.480000000000001e-05
+  },
+  {
+   "id": "g027",
+   "type": "factual",
+   "answerable": true,
+   "question": "Why did the European Commission express concern about TikTok Lite's task and reward feature?",
+   "gold_chunk_ids": [
+    "36e2d88521f976cc"
+   ],
+   "ranked": [
+    "55895877df130ac0",
+    "49e4e795050ed014",
+    "36e2d88521f976cc",
+    "0e79c5c63ff6b3cb",
+    "79b1b466aeecaa60",
+    "9b2de07f2a816542",
+    "333483104a84b89f",
+    "a706b5db9e96f3fd",
+    "5cebef10b38d4aff",
+    "dc6cda31fc303ba6"
+   ],
+   "context_ids": [
+    "55895877df130ac0",
+    "49e4e795050ed014",
+    "36e2d88521f976cc"
+   ],
+   "answer": "The European Commission expressed concern that TikTok Lite's \"task and reward\" feature could be addictive for minors (or children) and negatively affect their mental health [S1], [S2], [S3].",
+   "cited_ids": [
+    "55895877df130ac0",
+    "49e4e795050ed014",
+    "36e2d88521f976cc"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 0.3333333333333333,
+   "recall@5": 1.0,
+   "citation_correctness": 0.3333333333333333,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the European Commission's concerns about TikTok Lite's task and reward feature without including any irrelevant information.",
+   "judge_input_tokens": 3204,
+   "judge_output_tokens": 805,
+   "latency_ms": {
+    "dense": 2.8573329909704626,
+    "bm25": 94.1262080159504,
+    "fuse": 0.01779201556928456,
+    "embed": 306.7998749902472,
+    "retrieve": 403.80120801273733,
+    "rerank": 212.37724999082275,
+    "generate": 2652.513499953784,
+    "total": 3268.691957957344
+   },
+   "tokens": {
+    "generate_input": 863,
+    "generate_output": 384,
+    "embed": 18,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00209085,
+   "judge_cost_usd": 0.0025696000000000004
+  },
+  {
+   "id": "g034",
+   "type": "factual",
+   "answerable": true,
+   "question": "Which agreement calling for international co-operation on artificial intelligence risks was signed by 28 countries at the 2023 AI Safety Summit?",
+   "gold_chunk_ids": [
+    "1b8d5f6d90087e00"
+   ],
+   "ranked": [
+    "1b8d5f6d90087e00",
+    "138cebcca4af23ff",
+    "493e5f1511e72158",
+    "dfccc23359529727",
+    "9b809443bf3cd777",
+    "45ac323d33849bad",
+    "f2a0a96848f9f841",
+    "3ac01d5f2eacf0c6",
+    "e6f25ae7dbcc9fe5",
+    "86168c74940a561f"
+   ],
+   "context_ids": [
+    "1b8d5f6d90087e00",
+    "138cebcca4af23ff",
+    "493e5f1511e72158"
+   ],
+   "answer": "The agreement issued by 28 countries at the summit is the **Bletchley Declaration** [S1]. It calls for international co-operation to manage the challenges and risks of artificial intelligence [S1], [S2].",
+   "cited_ids": [
+    "1b8d5f6d90087e00",
+    "138cebcca4af23ff"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.5,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response directly and accurately addresses the question without any irrelevant information.",
+   "judge_input_tokens": 3132,
+   "judge_output_tokens": 844,
+   "latency_ms": {
+    "dense": 1.7343340150546283,
+    "bm25": 100.46504199272022,
+    "fuse": 0.020167004549875855,
+    "embed": 423.7919590668753,
+    "retrieve": 526.0115020792,
+    "rerank": 192.1775000228081,
+    "generate": 3947.7247500326484,
+    "total": 4665.9137521346565
+   },
+   "tokens": {
+    "generate_input": 790,
+    "generate_output": 541,
+    "embed": 31,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00262745,
+   "judge_cost_usd": 0.0026032000000000004
+  },
+  {
+   "id": "g043",
+   "type": "keyword",
+   "answerable": true,
+   "question": "For AI systems used by regulated financial institutions, what enforcement powers do competent authorities hold under Regulation (EU) 2019/1020?",
+   "gold_chunk_ids": [
+    "ee89c5e85d91ede8"
+   ],
+   "ranked": [
+    "ee89c5e85d91ede8",
+    "9c0429dd9f55895d",
+    "6a14569df219655d",
+    "fb0d1719f223d35e",
+    "a0cba81600e65cf1",
+    "0505e4e36859bceb",
+    "b6042ee9cb3c3b0a",
+    "39d06675bf2e795d",
+    "4db9a566a8bf75cf",
+    "0bc5a4ac026c8fd6"
+   ],
+   "context_ids": [
+    "ee89c5e85d91ede8",
+    "9c0429dd9f55895d",
+    "6a14569df219655d"
+   ],
+   "answer": "Based on the provided sources, competent/market surveillance authorities supervising AI systems used by regulated financial institutions hold the following powers under Regulation (EU) 2019/1020:\n\n* **All Enforcement Powers:** Competent authorities have all powers/enforcement powers laid down in Regulation (EU) 2019/1020 to enforce the requirements and obligations of the Regulation [S1], [S3].\n* **Ex Post Market Surveillance Powers:** They have the power to carry out *ex post* market surveillance activities, which can be integrated into their existing supervisory mechanisms and procedures under Union financial services law [S1].\n* **Remote Exercise of Specific Powers:** To ensure effective enforcement, market surveillance authorities may remotely exercise the powers referred to in Article 14(4), points (d) and (j), of Regulation (EU) 2019/1020, as appropriate [S2].",
+   "cited_ids": [
+    "ee89c5e85d91ede8",
+    "6a14569df219655d",
+    "9c0429dd9f55895d"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.3333333333333333,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the enforcement powers of competent authorities under Regulation (EU) 2019/1020 for AI systems in regulated financial institutions, with no irrelevant information included.",
+   "judge_input_tokens": 3901,
+   "judge_output_tokens": 1162,
+   "latency_ms": {
+    "dense": 1.5790420002304018,
+    "bm25": 94.75304197985679,
+    "fuse": 0.017457990907132626,
+    "embed": 300.1750420080498,
+    "retrieve": 396.5245839790441,
+    "rerank": 191.82858301792294,
+    "generate": 6938.692291034386,
+    "total": 7527.045458031353
+   },
+   "tokens": {
+    "generate_input": 975,
+    "generate_output": 1017,
+    "embed": 33,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0045516,
+   "judge_cost_usd": 0.0034196000000000005
+  },
+  {
+   "id": "g044",
+   "type": "keyword",
+   "answerable": true,
+   "question": "According to Article 8 of Regulation (EU) 2024/1689, what system must be taken into account when ensuring compliance with high-risk AI system requirements?",
+   "gold_chunk_ids": [
+    "16f608eccbf4be12"
+   ],
+   "ranked": [
+    "16f608eccbf4be12",
+    "3d71f5317415524c",
+    "e2327d4d95dabdc0",
+    "803001fb689b9bcf",
+    "9a0b0df6dd68525f",
+    "1994df69eebca137",
+    "5f47e41d0b9a2aff",
+    "941d8be6aa06a679",
+    "4bc2187a8b81d6dd",
+    "e9479bd8f9c9ab20"
+   ],
+   "context_ids": [
+    "16f608eccbf4be12",
+    "3d71f5317415524c",
+    "e2327d4d95dabdc0"
+   ],
+   "answer": "According to Article 8 of Regulation (EU) 2024/1689, the **risk management system referred to in Article 9** must be taken into account when ensuring compliance with the requirements for high-risk AI systems [S1].",
+   "cited_ids": [
+    "16f608eccbf4be12"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 1.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the requirement by focusing on the system specified in Article 8 without including any irrelevant information.",
+   "judge_input_tokens": 2999,
+   "judge_output_tokens": 727,
+   "latency_ms": {
+    "dense": 1.1611669906415045,
+    "bm25": 98.63679102272727,
+    "fuse": 0.01820901525206864,
+    "embed": 309.1056669363752,
+    "retrieve": 408.92183396499604,
+    "rerank": 274.4517080136575,
+    "generate": 2733.4653330035508,
+    "total": 3416.8388749822043
+   },
+   "tokens": {
+    "generate_input": 818,
+    "generate_output": 366,
+    "embed": 40,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.001994,
+   "judge_cost_usd": 0.0023628
+  },
+  {
+   "id": "g045",
+   "type": "keyword",
+   "answerable": true,
+   "question": "Under the EU Artificial Intelligence Act, what is required regarding the assessment of human oversight measures in accordance with Article 14?",
+   "gold_chunk_ids": [
+    "52729909f6b702e8"
+   ],
+   "ranked": [
+    "fe8ce1f2f0f7961d",
+    "7b7fce1615631829",
+    "9bcafffedae554ef",
+    "74f75d09a603e09b",
+    "031c00ef4d9df4f2",
+    "21a6ddba598e6569",
+    "534fa8e141a1be36",
+    "873ad40a4cc839d2",
+    "6c5d04abddbaf2b4",
+    "3092010d2f43c0e2"
+   ],
+   "context_ids": [
+    "fe8ce1f2f0f7961d",
+    "7b7fce1615631829",
+    "9bcafffedae554ef"
+   ],
+   "answer": "Based on the provided sources, the EU Artificial Intelligence Act requires that measures in accordance with Article 14 include:\n\n* **Assessment of technical measures:** An assessment of the technical measures needed to facilitate the interpretation of the outputs of AI systems by deployers, in accordance with Article 13(3), point (d) [S3].\n* **Commensurate oversight:** Oversight measures must be commensurate with the risks, level of autonomy, and context of use of the high-risk AI system [S2]. \n* **Design and aim:** High-risk AI systems must be designed and developed\u2014including with appropriate human-machine interface tools\u2014so that natural persons can effectively oversee them during use [S2]. The oversight aims to prevent or minimize risks to health, safety, or fundamental rights [S2].",
+   "cited_ids": [
+    "9bcafffedae554ef",
+    "7b7fce1615631829"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 0.0,
+   "hit@5": 0.0,
+   "mrr@10": 0.0,
+   "recall@5": 0.0,
+   "citation_correctness": 0.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 0.9090909090909091,
+   "answer_relevancy_reason": "The score is 0.91 because the response accurately addresses the assessment of human oversight measures under Article 14, but it includes a statement about Article 13(3)(d) that is not directly relevant to human oversight, preventing a higher score.",
+   "judge_input_tokens": 3729,
+   "judge_output_tokens": 1327,
+   "latency_ms": {
+    "dense": 1.0803339828271419,
+    "bm25": 95.20029099076055,
+    "fuse": 0.018624996300786734,
+    "embed": 377.64012499246746,
+    "retrieve": 473.93937496235594,
+    "rerank": 218.88670799671672,
+    "generate": 7198.531917063519,
+    "total": 7891.358000022592
+   },
+   "tokens": {
+    "generate_input": 881,
+    "generate_output": 1055,
+    "embed": 26,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0046222,
+   "judge_cost_usd": 0.0036148
+  },
+  {
+   "id": "g051",
+   "type": "keyword",
+   "answerable": true,
+   "question": "According to Article 19, how long must providers of high-risk AI systems keep automatically generated logs that are under their control?",
+   "gold_chunk_ids": [
+    "0540fc88b2270ae8"
+   ],
+   "ranked": [
+    "0540fc88b2270ae8",
+    "0cf4dafacaeef630",
+    "9dd2edb76d57910e",
+    "4bc2187a8b81d6dd",
+    "66c4d5a9d8563120",
+    "7ce34dbf2ed74741",
+    "ab1f7c8094a12af5",
+    "b0f536e57e2bfe13",
+    "a5dd852880c6f2b9",
+    "e9479bd8f9c9ab20"
+   ],
+   "context_ids": [
+    "0540fc88b2270ae8",
+    "0cf4dafacaeef630",
+    "9dd2edb76d57910e"
+   ],
+   "answer": "According to Article 19, providers of high-risk AI systems must keep automatically generated logs that are under their control for a period appropriate to the intended purpose of the high-risk AI system, of at least six months, unless applicable Union or national law (in particular Union law on the protection of personal data) provides otherwise [S1], [S3].",
+   "cited_ids": [
+    "0540fc88b2270ae8",
+    "9dd2edb76d57910e"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.5,
+   "refused": false,
+   "faithfulness": 0.75,
+   "faithfulness_reason": "The score is 0.75 because the actual output incorrectly specifies Union law on the protection of personal data as an exception to the log retention requirement, which is not mentioned in the retrieval context that only refers generally to applicable Union or national law.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the question about the log retention period for high-risk AI systems as specified in Article 19, with no irrelevant information included.",
+   "judge_input_tokens": 3626,
+   "judge_output_tokens": 985,
+   "latency_ms": {
+    "dense": 1.9510419806465507,
+    "bm25": 286.79024998564273,
+    "fuse": 0.020374980522319674,
+    "embed": 281.8417919334024,
+    "retrieve": 570.603458880214,
+    "rerank": 689.1199999954551,
+    "generate": 3401.505541987717,
+    "total": 4661.229000863386
+   },
+   "tokens": {
+    "generate_input": 968,
+    "generate_output": 539,
+    "embed": 28,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0027528500000000003,
+   "judge_cost_usd": 0.0030264000000000003
+  },
+  {
+   "id": "g074",
+   "type": "paraphrase",
+   "answerable": true,
+   "question": "Which legal academic predicted that the EU's platform rules would shape other countries' rules the way its privacy law has, but only over several years?",
+   "gold_chunk_ids": [
+    "fbf76467e18b2a83"
+   ],
+   "ranked": [
+    "fbf76467e18b2a83",
+    "f83236726dbba3b4",
+    "98b0fc242b87e9f3",
+    "029fa5a65d70ac58",
+    "9c3cf7d40d32e037",
+    "c34ab5c428a4e0fd",
+    "c681d6b6a9b95464",
+    "0e833a061ae76f31",
+    "16d275c81fa4f3af",
+    "88e827855080a88b"
+   ],
+   "context_ids": [
+    "fbf76467e18b2a83",
+    "f83236726dbba3b4",
+    "98b0fc242b87e9f3"
+   ],
+   "answer": "Based on the provided sources, Suzanne Vergnolle of the Conservatoire national des arts et m\u00e9tiers stated in 2023 that the Digital Services Act (DSA) would have a Brussels effect similar to the General Data Protection Regulation (GDPR), but noted that \"it's going to take years\" [S1].",
+   "cited_ids": [
+    "fbf76467e18b2a83"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 1.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the question without any irrelevant information, providing a clear and accurate answer.",
+   "judge_input_tokens": 3452,
+   "judge_output_tokens": 928,
+   "latency_ms": {
+    "dense": 2.162916003726423,
+    "bm25": 108.53945900453255,
+    "fuse": 0.02129198401235044,
+    "embed": 308.15379100386053,
+    "retrieve": 418.87745799613185,
+    "rerank": 265.9692500019446,
+    "generate": 5994.241541950032,
+    "total": 6679.088249948109
+   },
+   "tokens": {
+    "generate_input": 898,
+    "generate_output": 762,
+    "embed": 31,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0035372,
+   "judge_cost_usd": 0.0028656000000000003
+  },
+  {
+   "id": "g075",
+   "type": "paraphrase",
+   "answerable": true,
+   "question": "How does randomly switching off parts of a neural network during training help stop it from picking up on unusual patterns?",
+   "gold_chunk_ids": [
+    "ebe44bd0decad2fa"
+   ],
+   "ranked": [
+    "51a4f518affd765c",
+    "1486649e898c5932",
+    "d8eafd793962084c",
+    "fbcfc414ea047c0b",
+    "535f7e1e29aeae3a",
+    "eb2f900e7ba9187f",
+    "152ee3432ec4d5a1",
+    "70d36ac416d5fa6f",
+    "8742d733803e8aaf",
+    "eb4d1b0b6b275df6"
+   ],
+   "context_ids": [
+    "51a4f518affd765c",
+    "1486649e898c5932",
+    "d8eafd793962084c"
+   ],
+   "answer": "Based on the provided sources, randomly switching off parts of a neural network during training is a method called **dropout**, which helps combat overfitting [S3]. \n\nThe sources describe how this process works as follows:\n\n* **Addressing Parameter Overload:** Neural networks are prone to overfitting because they have so many parameters [S3].\n* **Temporarily Ignoring Nodes:** At each training stage, individual nodes\u2014along with their incoming and outgoing edges\u2014are randomly \"dropped out\" (ignored) with a probability of $1-p$ (or kept with a probability of $p$) [S3].\n* **Training a Reduced Network:** Only the remaining reduced network is trained on the data during that particular stage [S3]. \n* **Reinserting Nodes:** The removed nodes are then reinserted into the network with their original weights [S3]. \n* **Approximating During Testing:** After training, the full network is used with each node's output weighted by a factor of $p$ to approximate a sample average of the dropped-out networks [S3].\n\n*(Note: The sources state that dropout reduces overfitting by training only a reduced network at each stage to manage the large number of parameters, but they do not provide further theoretical details beyond this process [S3].)*",
+   "cited_ids": [
+    "d8eafd793962084c"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 0.0,
+   "hit@5": 0.0,
+   "mrr@10": 0.0,
+   "recall@5": 0.0,
+   "citation_correctness": 0.0,
+   "refused": false,
+   "faithfulness": 1.0,
+   "faithfulness_reason": "The score is 1.00 because there are no contradictions; the actual output fully aligns with the retrieval context.",
+   "answer_relevancy": 0.9090909090909091,
+   "answer_relevancy_reason": "The score is 0.91 because the response effectively explains how randomly switching off parts of a neural network (dropout) prevents overfitting by stopping reliance on unusual patterns, but it includes a meta-information statement about sources that doesn't address the input, preventing a perfect score.",
+   "judge_input_tokens": 4096,
+   "judge_output_tokens": 1498,
+   "latency_ms": {
+    "dense": 1.6066250100266188,
+    "bm25": 104.01983300107531,
+    "fuse": 0.020625011529773474,
+    "embed": 289.8100420134142,
+    "retrieve": 395.4571250360459,
+    "rerank": 213.37250000215136,
+    "generate": 11783.63687498495,
+    "total": 12392.466500023147
+   },
+   "tokens": {
+    "generate_input": 770,
+    "generate_output": 1781,
+    "embed": 23,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.007260849999999999,
+   "judge_cost_usd": 0.0040352
+  },
+  {
+   "id": "g076",
+   "type": "paraphrase",
+   "answerable": true,
+   "question": "How did highlighting a national citizen-scoring program's repressive side affect support for it among college students?",
+   "gold_chunk_ids": [
+    "f72f1cd6f031d7d4"
+   ],
+   "ranked": [
+    "6386d875a41d96f4",
+    "25036f4c37b8acb5",
+    "ea9a22e2df333633",
+    "89acaff0274d9b3d",
+    "49a230af473b921e",
+    "8acb2d7c8af86c07",
+    "d374841b0c2b2f65",
+    "070554a6e1b04505",
+    "4f501c8da4c69f89",
+    "e97d58a31395e79b"
+   ],
+   "context_ids": [
+    "6386d875a41d96f4",
+    "25036f4c37b8acb5",
+    "ea9a22e2df333633"
+   ],
+   "answer": "Based on the provided sources, there is no mention of college students or how highlighting the repressive side of a national citizen-scoring program affected their support [S1], [S2], [S3].",
+   "cited_ids": [
+    "6386d875a41d96f4",
+    "25036f4c37b8acb5",
+    "ea9a22e2df333633"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 0.0,
+   "hit@5": 0.0,
+   "mrr@10": 0.0,
+   "recall@5": 0.0,
+   "citation_correctness": 0.0,
+   "refused": true,
+   "judge_input_tokens": 167,
+   "judge_output_tokens": 6,
+   "latency_ms": {
+    "dense": 3.6352089955471456,
+    "bm25": 93.30000000772998,
+    "fuse": 0.019500002963468432,
+    "embed": 445.44466596562415,
+    "retrieve": 542.3993749718647,
+    "rerank": 167.34745900612324,
+    "generate": 4175.262333010323,
+    "total": 4885.009166988311
+   },
+   "tokens": {
+    "generate_input": 690,
+    "generate_output": 626,
+    "embed": 22,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0028694,
+   "judge_cost_usd": 7.64e-05
+  },
+  {
+   "id": "g079",
+   "type": "paraphrase",
+   "answerable": true,
+   "question": "Which authors laid the foundation for the concept that people and synthetic entities might eventually combine into superior hybrid beings?",
+   "gold_chunk_ids": [
+    "5c8584194461a192"
+   ],
+   "ranked": [
+    "5c8584194461a192",
+    "d142bac827f2cfd6",
+    "9b4694faadda318a",
+    "d3a2d63bfc622ba6",
+    "6f033d630a939db6",
+    "203a6c0ddf62850c",
+    "4c418eb94fcd6769",
+    "ab38bdb2a9d33efa",
+    "84a0a7fbb208a3f8",
+    "c468ec3d3cb2c2ff"
+   ],
+   "context_ids": [
+    "5c8584194461a192",
+    "d142bac827f2cfd6",
+    "9b4694faadda318a"
+   ],
+   "answer": "The concept that humans and machines may merge into more capable cyborgs (known as transhumanism) has roots in the writings of **Aldous Huxley** and **Robert Ettinger** [S1]. \n\nAdditionally, this merge was predicted by robot designer Hans Moravec, cyberneticist Kevin Warwick, and inventor Ray Kurzweil [S1].",
+   "cited_ids": [
+    "5c8584194461a192"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 1.0,
+   "refused": false,
+   "faithfulness": 0.5,
+   "faithfulness_reason": "The score is 0.50 because the actual output inaccurately attributes the roots of the concept of humans and machines merging directly to Aldous Huxley and Robert Ettinger, whereas the context clarifies that transhumanism as a whole has roots in their writings, not specifically the merging concept.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response directly addresses the question without any irrelevant information, providing a clear and focused answer.",
+   "judge_input_tokens": 3773,
+   "judge_output_tokens": 1214,
+   "latency_ms": {
+    "dense": 1.1197080020792782,
+    "bm25": 94.6565409831237,
+    "fuse": 0.01937500201165676,
+    "embed": 343.7715000472963,
+    "retrieve": 439.5671240345109,
+    "rerank": 168.9206250011921,
+    "generate": 4711.5878749173135,
+    "total": 5320.0756239530165
+   },
+   "tokens": {
+    "generate_input": 884,
+    "generate_output": 611,
+    "embed": 22,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0029586499999999997,
+   "judge_cost_usd": 0.0034516000000000004
+  },
+  {
+   "id": "g086",
+   "type": "unanswerable",
+   "answerable": false,
+   "question": "What was the exact licensing fee paid by the Oakland Police Department to deploy the PredPol algorithm in 2016?",
+   "gold_chunk_ids": [],
+   "ranked": [
+    "7df864f025a05838",
+    "05e2f3d540c9fb45",
+    "21f5a1f417bdbf1c",
+    "6db04140b5b78a8c",
+    "8191dc2bfd0397d1",
+    "fb532c2b838f249e",
+    "c32b678cab01a4bd",
+    "23c2a2b88223f185",
+    "08372f1381c85457",
+    "1c1eed063011e41d"
+   ],
+   "context_ids": [
+    "7df864f025a05838",
+    "05e2f3d540c9fb45",
+    "21f5a1f417bdbf1c"
+   ],
+   "answer": "Based on the provided sources, there is no mention of the licensing fee paid by the Oakland Police Department to deploy the PredPol algorithm.",
+   "cited_ids": [],
+   "refused": true,
+   "judge_input_tokens": 154,
+   "judge_output_tokens": 6,
+   "latency_ms": {
+    "dense": 1.187499990919605,
+    "bm25": 97.7252500015311,
+    "fuse": 0.019166007405146956,
+    "embed": 311.9719160022214,
+    "retrieve": 410.90383200207725,
+    "rerank": 207.63974997680634,
+    "generate": 3156.781084020622,
+    "total": 3775.3246659995057
+   },
+   "tokens": {
+    "generate_input": 885,
+    "generate_output": 418,
+    "embed": 26,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00223645,
+   "judge_cost_usd": 7.120000000000001e-05
+  },
+  {
+   "id": "g090",
+   "type": "unanswerable",
+   "answerable": false,
+   "question": "What specific private feedback did European Standardisation Organisation officials share with the Commission during their closed-door meeting regarding harmonised standards for AI systems in October 2023?",
+   "gold_chunk_ids": [],
+   "ranked": [
+    "84686c28fd737f93",
+    "11ffe70794310ce1",
+    "f3925bb4e8c6ccaf",
+    "cd35efb818c3a5e9",
+    "04f029de127639c1",
+    "941eaa4cda7db6c8",
+    "7a402266b093cc5d",
+    "3092010d2f43c0e2",
+    "470a9227a8a0fdc2",
+    "c2300633b2a5a148"
+   ],
+   "context_ids": [
+    "84686c28fd737f93",
+    "11ffe70794310ce1",
+    "f3925bb4e8c6ccaf"
+   ],
+   "answer": "Based on the provided sources, there is no mention of any private feedback shared by European Standardisation Organisation officials during a closed-door meeting in October 2023.",
+   "cited_ids": [],
+   "refused": true,
+   "judge_input_tokens": 168,
+   "judge_output_tokens": 6,
+   "latency_ms": {
+    "dense": 1.0104170069098473,
+    "bm25": 94.14858400123194,
+    "fuse": 0.017749989638105035,
+    "embed": 652.5442500133067,
+    "retrieve": 747.7210010110866,
+    "rerank": 176.07616700115614,
+    "generate": 3166.336875059642,
+    "total": 4090.1340430718847
+   },
+   "tokens": {
+    "generate_input": 949,
+    "generate_output": 456,
+    "embed": 36,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00242895,
+   "judge_cost_usd": 7.680000000000001e-05
+  },
+  {
+   "id": "g094",
+   "type": "multihop",
+   "answerable": true,
+   "question": "What different mandates did Executive Order 14110 and Executive Order 14434 impose on US federal agencies?",
+   "gold_chunk_ids": [
+    "5fb45e5623fe6e9c",
+    "dcc5f40ffd736e21"
+   ],
+   "ranked": [
+    "824a1707a7b8294b",
+    "2c25daad03b1640f",
+    "5fb45e5623fe6e9c",
+    "98391d2d8dde82a9",
+    "42ea76ac25143ac5",
+    "711691ffc5dc5f02",
+    "d8bfbf082137e232",
+    "7c9e8e1ff629938b",
+    "d0723cf6936ce6d1",
+    "71e938b466bd1aba"
+   ],
+   "context_ids": [
+    "824a1707a7b8294b",
+    "2c25daad03b1640f",
+    "5fb45e5623fe6e9c"
+   ],
+   "answer": "Based on the provided sources, Executive Order 14110 imposed the following mandates on U.S. federal agencies:\n\n* **Chief Artificial Intelligence Officers:** Required a number of major/large federal agencies to create and appoint dedicated \"chief artificial intelligence officer\" positions [S1], [S3]. Agencies such as the General Services Administration (GSA), the Department of Education, and the National Science Foundation (NSF) appointed or elevated officials for these roles [S3].\n* **Department of Homeland Security (DHS):** Responsible for developing AI-related security guidelines (including cybersecurity) and working with private sector firms in critical infrastructure (such as energy) to coordinate responses to AI-enabled threats [S2].\n* **Department of Veterans Affairs:** Mandated to launch an AI technology competition aimed at reducing occupational burnout among healthcare workers through AI-assisted tools for routine tasks [S2].\n* **Department of Commerce's National Institute of Standards and Technology (NIST):** Mandated to develop a generative AI-focused resource to supplement the existing AI Risk Management Framework [S2].\n\nThe provided sources **do not contain information about Executive Order 14434** or any mandates associated with it.",
+   "cited_ids": [
+    "824a1707a7b8294b",
+    "5fb45e5623fe6e9c",
+    "2c25daad03b1640f"
+   ],
+   "hit@1": 0.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 0.3333333333333333,
+   "recall@5": 0.5,
+   "citation_correctness": 0.3333333333333333,
+   "refused": true,
+   "judge_input_tokens": 361,
+   "judge_output_tokens": 6,
+   "latency_ms": {
+    "dense": 2.000416978262365,
+    "bm25": 93.82495799218304,
+    "fuse": 0.015916972188279033,
+    "embed": 323.28829204197973,
+    "retrieve": 419.1295839846134,
+    "rerank": 175.84391697891988,
+    "generate": 4219.105332973413,
+    "total": 4814.0788339369465
+   },
+   "tokens": {
+    "generate_input": 714,
+    "generate_output": 738,
+    "embed": 28,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.0033086,
+   "judge_cost_usd": 0.000154
+  },
+  {
+   "id": "g100",
+   "type": "multihop",
+   "answerable": true,
+   "question": "How do the core AI techniques used by DeepMind for AlphaFold compare to those used for AlphaGo and its successors?",
+   "gold_chunk_ids": [
+    "4e78e645c2f8348e",
+    "c690789f2ddb312f"
+   ],
+   "ranked": [
+    "c690789f2ddb312f",
+    "7fa573878f14c974",
+    "4e78e645c2f8348e",
+    "7c581a390112d041",
+    "a948598fb7a805e6",
+    "8a23ba67a7dca003",
+    "a27fc2039cbceec9",
+    "c5f1ccb35b9ea9f6",
+    "3fd316b3ab09e547",
+    "8442d0ed795ab23d"
+   ],
+   "context_ids": [
+    "c690789f2ddb312f",
+    "7fa573878f14c974",
+    "4e78e645c2f8348e"
+   ],
+   "answer": "Based on the provided sources, the core AI techniques used for AlphaGo (and its successors) and AlphaFold share a foundation in deep learning, but they apply different network architectures, search methods, and training strategies tailored to their respective tasks:\n\n### Similarities\n* **Deep Learning Foundation:** Both systems rely on deep learning and artificial neural network techniques developed by DeepMind [S1, S2].\n\n### Key Differences\n\n#### AlphaGo and its Successors\n* **Combination of Neural Networks and Monte Carlo Tree Search:** AlphaGo and its subsequent versions use an artificial neural network combined with a **Monte Carlo tree search algorithm** to evaluate and select moves [S1].\n* **Neural Network Purpose:** The neural network is trained to identify the best moves and evaluate their winning percentages, which iteratively improves the strength of the Monte Carlo tree search [S1].\n* **Training & Progression:** Early versions were trained on extensive human and computer gameplay, while later iterations evolved to learn entirely through self-play without human games (AlphaGo Zero), generalized to other games like chess and shogi (AlphaZero), or learned without being taught the rules of the game at all (MuZero) [S1].\n\n#### AlphaFold\n* **Attention Networks:** Instead of relying on tree search algorithms, AlphaFold uses a form of **attention network**, a deep learning technique that focuses on having the AI identify individual parts of a larger problem and piece them together to reach an overall solution [S3].\n* **Data-Driven Structural Prediction:** AlphaFold's deep learning models are trained on large structural and genomic datasets, including over 170,000 protein structures from the public Protein Data Bank, the custom Big Fantastic Database, and metagenomic data to improve predictions like multiple sequence alignments [S2, S3].\n* **Training Compute:** The overall training of AlphaFold was conducted using between 100 and 200 GPUs [S3].",
+   "cited_ids": [
+    "c690789f2ddb312f",
+    "7fa573878f14c974",
+    "4e78e645c2f8348e"
+   ],
+   "hit@1": 1.0,
+   "hit@3": 1.0,
+   "hit@5": 1.0,
+   "mrr@10": 1.0,
+   "recall@5": 1.0,
+   "citation_correctness": 0.6666666666666666,
+   "refused": false,
+   "faithfulness": 0.9,
+   "faithfulness_reason": "The score is 0.90 because the actual output incorrectly states training on the 'custom Big Fantastic Database,' which is not supported by the retrieval context that only mentions training on over 170,000 protein structures from the Protein Data Bank and metagenomic data.",
+   "answer_relevancy": 1.0,
+   "answer_relevancy_reason": "The score is 1.00 because the response fully addresses the comparison of core AI techniques used by DeepMind for AlphaFold and AlphaGo without including any irrelevant information.",
+   "judge_input_tokens": 4947,
+   "judge_output_tokens": 1986,
+   "latency_ms": {
+    "dense": 1.2318750086706132,
+    "bm25": 94.57687500980683,
+    "fuse": 0.016999983927235007,
+    "embed": 321.221666992642,
+    "retrieve": 417.04741699504666,
+    "rerank": 196.16199997835793,
+    "generate": 10341.119999997318,
+    "total": 10954.329416970722
+   },
+   "tokens": {
+    "generate_input": 806,
+    "generate_output": 1517,
+    "embed": 25,
+    "hyde_input": 0,
+    "hyde_output": 0
+   },
+   "cost_usd": 0.00629825,
+   "judge_cost_usd": 0.0051564
+  }
+ ]
+}

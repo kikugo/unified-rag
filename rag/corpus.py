@@ -26,7 +26,8 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus"
-USER_AGENT = "unified-rag-eval/0.1 (https://github.com/kikugo/unified-rag; karthikchangal39@gmail.com)"
+# Wikimedia asks scripts for a descriptive User-Agent with a way to reach the operator; the repo serves that.
+USER_AGENT = "unified-rag-eval/0.1 (https://github.com/kikugo/unified-rag)"
 WIKI_API = "https://en.wikipedia.org/w/api.php"
 REQUEST_PAUSE_SEC = 0.3
 

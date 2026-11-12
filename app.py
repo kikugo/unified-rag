@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -50,13 +51,17 @@ from rag.models import ANSWER_MODEL, DEMO_ANSWER_MODEL, EMBEDDING_MODEL
 from rag.pipeline import ChromaStore, Config, build_answer_contents, retrieve
 from rag_core import (
     MANAGED_BACKEND,
+    SOURCE_TYPE_LABELS,
     build_rehydrated_sources,
     call_with_retry,
     format_prompt_cost,
     is_transient_error,
+    mark_citations,
     pop_source_by_id,
     select_context_results,
     source_artifacts,
+    source_locator,
+    strip_citations,
     within_demo_upload_cap,
 )
 from source_registry import delete_source, list_sources, upsert_source
@@ -72,10 +77,15 @@ MAX_UPLOADS_PER_SESSION = int(os.getenv("MAX_UPLOADS_PER_SESSION", "5"))
 # only 1K requests a day against 3.6 Flash's 10K.
 MANAGED_ANSWER_MODEL = DEMO_ANSWER_MODEL if DEMO_MODE else ANSWER_MODEL
 
-# page config
-st.set_page_config(page_title="Unified RAG", layout="wide")
-st.title("Unified RAG 🔍")
-st.caption("Multimodal search powered by Gemini Embedding 2")
+# page config. Colours and fonts live in .streamlit/config.toml.
+st.set_page_config(page_title="Unified RAG", page_icon=":material/manage_search:", layout="centered")
+st.title("Unified RAG")
+st.markdown(
+    "Ask one question across PDFs, images, audio and video. Every answer cites the "
+    "page, frame or clip it came from, so you can open the source and check it."
+)
+
+AVATARS = {"user": ":material/person:", "assistant": ":material/find_in_page:"}
 
 # session state — must be before sidebar renders
 if "doc_embeddings" not in st.session_state:
@@ -174,27 +184,38 @@ def resolve_hosted_key() -> str:
 
 HOSTED_KEY = resolve_hosted_key()
 
-# sidebar
-with st.sidebar:
-    st.header("🔑 API Key")
-    _typed_key = st.text_input(
-        "Google API Key",
+# sidebar: the library (add, browse, delete), image search, settings, key
+SAMPLE_CHARTS_HELP = ("Six Q4 2024 earnings charts (Tesla, Netflix, Nike, Google, Accenture, "
+                      "Tencent), enough to try a question in a few seconds.")
+
+
+def api_key_input() -> str:
+    """Key field plus a line on where the key goes. Returns what was typed."""
+    typed = st.text_input(
+        "Google API key",
         type="password",
         key="google_key",
-        placeholder="Using the demo key" if HOSTED_KEY else "",
+        placeholder="Using the shared demo key" if HOSTED_KEY else "Paste your key",
         help="Optional while the demo key is available. Your own key takes priority.",
     )
-    google_api_key = (_typed_key or "").strip() or HOSTED_KEY
-    if not _typed_key and HOSTED_KEY:
-        st.caption("✅ Running on a shared demo key, so you can try it without signing up. "
-                   "Paste your own to use it instead.")
+    if not typed and HOSTED_KEY:
+        st.caption("A shared demo key is active, so you can try the app without signing up. "
+                   "Paste your own key to use it instead.")
     else:
-        "[Get a Google API key](https://aistudio.google.com/app/apikey)"
-        st.caption("🔒 Your key is held in memory for this session only and is never stored or sent anywhere.")
+        st.caption("[Get a Google API key](https://aistudio.google.com/app/apikey). "
+                   "It is held in memory for this session only and never stored.")
+    return typed
 
-    st.markdown("---")
-    # ---------- Add files ----------
-    st.subheader("📤 Add files")
+
+with st.sidebar:
+    # Without a demo key the key is the first thing anyone needs, so it leads.
+    # With one, it is a setting and sits at the bottom.
+    if not HOSTED_KEY:
+        _typed_key = api_key_input()
+        st.divider()
+
+    # ---------- Add sources ----------
+    st.subheader("Add sources")
     uploaded_files = st.file_uploader(
         "Files",
         type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
@@ -246,48 +267,55 @@ with st.sidebar:
             help="Skip near-duplicate frames so a held slide indexes once instead of many times.",
         )
 
-    if st.button("⚡ Load 6 sample charts", key="load_samples_btn"):
+    if st.button("Load 6 sample charts", key="load_samples_btn", width="stretch",
+                 help=SAMPLE_CHARTS_HELP):
         st.session_state.load_samples_requested = True
 
-    st.markdown("---")
-    # ---------- Your library ----------
-    st.subheader("📚 Your library")
-    TYPE_ICONS = {"pdf": "📄", "audio": "🎵", "video": "🎥", "image": "🖼️", "video_frame": "🎞️"}
+    st.divider()
+    # ---------- Library ----------
+    st.subheader("Library")
     sources = st.session_state.doc_sources
 
     if not sources:
-        st.caption("📭 Nothing loaded yet — add files above.")
+        st.caption("Nothing indexed yet. Add files above or load the sample charts.")
     else:
         if st.session_state.get("confirm_clear_all"):
-            st.warning("Remove all documents from your library?")
+            st.warning("Remove every source from your library? This also deletes the index entries.")
             cc1, cc2 = st.columns(2)
-            if cc1.button("Yes, clear all", key="confirm_clear_yes", use_container_width=True):
+            if cc1.button("Remove all", key="confirm_clear_yes", type="primary", width="stretch"):
                 st.session_state.pending_clear_all = True
                 st.session_state.confirm_clear_all = False
                 st.rerun()
-            if cc2.button("Cancel", key="confirm_clear_no", use_container_width=True):
+            if cc2.button("Cancel", key="confirm_clear_no", width="stretch"):
                 st.session_state.confirm_clear_all = False
                 st.rerun()
         else:
             # chunk count = vectors actually in the local index for this corpus
             chunk_count = sum(len(s.get("chroma_ids") or []) for s in sources)
-            top1, top2 = st.columns([2, 1])
-            top1.caption(f"{len(sources)} file(s) · {chunk_count} chunk(s) indexed")
-            if top2.button("Clear all", key="clear_all_btn", use_container_width=True):
+            top1, top2 = st.columns([3, 1], vertical_alignment="center")
+            top1.caption(
+                f"{len(sources)} {'source' if len(sources) == 1 else 'sources'}, "
+                f"{chunk_count} {'chunk' if chunk_count == 1 else 'chunks'} indexed"
+            )
+            if top2.button("Clear all", key="clear_all_btn", type="tertiary", width="stretch"):
                 st.session_state.confirm_clear_all = True
                 st.rerun()
 
         type_options = ["All"] + sorted({s["type"] for s in sources})
-        type_filter = st.selectbox("Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed")
+        type_filter = st.selectbox(
+            "Filter by type", type_options, key="doc_type_filter", label_visibility="collapsed",
+            format_func=lambda t: "All types" if t == "All" else SOURCE_TYPE_LABELS.get(t, t),
+        )
 
         df = pd.DataFrame([
-            {"source_id": s["source_id"], "Icon": TYPE_ICONS.get(s["type"], "📎"), "Name": s["name"], "Type": s["type"]}
+            {"source_id": s["source_id"], "Name": s["name"],
+             "Type": SOURCE_TYPE_LABELS.get(s["type"], s["type"])}
             for s in sources
             if type_filter == "All" or s["type"] == type_filter
         ])
         event = st.dataframe(
-            df[["Icon", "Name", "Type"]],
-            use_container_width=True,
+            df[["Name", "Type"]],
+            width="stretch",
             hide_index=True,
             on_select="rerun",
             selection_mode="multi-row",
@@ -295,10 +323,10 @@ with st.sidebar:
         )
         selected_ids = [df.iloc[r]["source_id"] for r in event.selection.rows]
         if st.button(
-            f"🗑 Delete selected ({len(selected_ids)})",
+            f"Delete {len(selected_ids)} selected" if selected_ids else "Select rows to delete",
             key="delete_sel_btn",
             disabled=not selected_ids,
-            use_container_width=True,
+            width="stretch",
         ):
             for sid in selected_ids:
                 removed, chroma_ids = pop_source_by_id(st.session_state.doc_sources, sid)
@@ -311,10 +339,10 @@ with st.sidebar:
                 st.session_state.pending_delete_chroma_ids.extend(chroma_ids)
             st.rerun()
 
-    st.markdown("---")
+    st.divider()
     # ---------- Search by image ----------
-    with st.expander("🔍 Search by image", expanded=False):
-        st.caption("Upload an image to find visually similar content.")
+    with st.expander("Search by image", icon=":material/image_search:", expanded=False):
+        st.caption("Upload an image to find the closest charts, pages and video frames in your library.")
         query_image_sidebar = st.file_uploader(
             "Query image",
             type=["png", "jpg", "jpeg"],
@@ -324,20 +352,20 @@ with st.sidebar:
         )
         top_k_img = st.slider("Results", min_value=1, max_value=5, value=3, key="top_k_img")
         run_img_query = st.button(
-            "🔍 Find Similar",
+            "Find similar",
             key="img_search_btn",
+            width="stretch",
             disabled=not (query_image_sidebar and st.session_state.doc_sources),
         )
 
-    st.markdown("---")
     # ---------- Settings ----------
-    retrieval_strategy = st.selectbox(
-        "Retrieval strategy",
-        ["Auto (Hybrid)", "Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
-        key="retrieval_strategy",
-        help="Auto: Gemini picks the backend per query. Local: your embedded files. Managed: Google File Search.",
-    )
-    with st.expander("⚙️ Settings", expanded=False):
+    with st.expander("Search settings", icon=":material/tune:", expanded=False):
+        retrieval_strategy = st.selectbox(
+            "Retrieval strategy",
+            ["Auto (Hybrid)", "Local Vector Store (Chroma)", "Managed RAG (Google File Search)"],
+            key="retrieval_strategy",
+            help="Auto: Gemini picks the backend per query. Local: your embedded files. Managed: Google File Search.",
+        )
         st.slider("Results to retrieve", min_value=1, max_value=5, value=3, key="top_k")
         st.selectbox("Embedding dimension", [3072, 1536, 768], key="embedding_dim")
         st.checkbox(
@@ -347,10 +375,15 @@ with st.sidebar:
             help="Draft a hypothetical answer, embed it, and average with your question's embedding. "
                  "Adds a Gemini call per search.",
         )
-        st.caption("Advanced vector storage (ChromaDB) — leave blank for a local database.")
+        st.caption("Remote ChromaDB (optional). Leave blank to use the local database.")
         st.text_input("Chroma Tenant", value="", key="chroma_tenant")
         st.text_input("Chroma Database", value="", key="chroma_database")
         st.text_input("Chroma API Key", type="password", key="chroma_api_key")
+
+    if HOSTED_KEY:
+        with st.expander("API key", icon=":material/key:", expanded=False):
+            _typed_key = api_key_input()
+    google_api_key = (_typed_key or "").strip() or HOSTED_KEY
 
     # auto-clear if dimension changed with docs loaded
     if st.session_state.embedding_dim != st.session_state.active_dim:
@@ -359,7 +392,8 @@ with st.sidebar:
             st.session_state.doc_sources = []
             st.session_state.corpus_id = str(uuid.uuid4())
             set_corpus_id(st.session_state.corpus_id)
-            st.toast("Dimension changed — documents cleared. Re-upload to re-embed.", icon="⚠️")
+            st.toast("Embedding dimension changed, so the library was cleared. Re-upload to re-embed.",
+                     icon=":material/warning:")
             st.session_state.active_dim = st.session_state.embedding_dim
             st.rerun()
         st.session_state.active_dim = st.session_state.embedding_dim
@@ -373,11 +407,11 @@ def get_gemini_client(api_key: str):
 if google_api_key:
     client = get_gemini_client(google_api_key)
     gemini.set_client(client)
-    st.sidebar.success("Client ready!")
 else:
     st.info(
-        "Enter your Google API key in the sidebar to get started. "
-        "[Get one free](https://aistudio.google.com/app/apikey) — it takes about a minute."
+        "Add a Google API key in the sidebar to start. "
+        "[Getting one](https://aistudio.google.com/app/apikey) is free and takes about a minute.",
+        icon=":material/key:",
     )
     st.stop()
 
@@ -731,9 +765,9 @@ def answer(question: str, selected_results: list[dict],
                 time.sleep(2 ** attempt)
                 continue
             if produced:
-                yield "\n\n⚠️ The answer was cut off — the model hiccupped. Please ask again."
+                yield "\n\n*The answer was cut off by a model error. Ask again to get the rest.*"
             else:
-                yield "⚠️ The model is busy right now (try again in a moment)."
+                yield "The model is busy right now. Try again in a moment."
             return
 
 def answer_managed(question: str,
@@ -791,7 +825,7 @@ def answer_managed(question: str,
         return _gen(), citations
     except Exception:
         def _error():
-            yield "⚠️ The managed backend is unavailable right now (try again in a moment)."
+            yield "Google File Search is unavailable right now. Try again in a moment."
         return _error(), []
 
 SAMPLE_IMAGES = {
@@ -809,12 +843,13 @@ def load_sample_images():
     to_load = {name: url for name, url in SAMPLE_IMAGES.items() if name not in loaded_base_names}
 
     if not to_load:
-        st.info("Sample images already loaded.")
+        st.session_state.flash = "The sample charts are already in your library."
         return
 
-    progress = st.progress(0, text="Loading sample images...")
+    failed = []
+    progress = st.progress(0, text="Loading sample charts…")
     for i, (name, url) in enumerate(to_load.items()):
-        progress.progress(i / len(to_load), text=f"Downloading {name}...")
+        progress.progress(i / len(to_load), text=f"Downloading {name}…")
         try:
             resp = requests.get(url, timeout=15)
             resp.raise_for_status()
@@ -826,40 +861,29 @@ def load_sample_images():
             img_bytes = buf.getvalue()
             mime = "image/png"
 
-            progress.progress(i / len(to_load), text=f"Embedding {name}...")
+            progress.progress(i / len(to_load), text=f"Embedding {name}…")
             emb = embed_image(img_bytes, mime_type=mime)
             if emb is not None:
                 add_document(emb, name, "image", mime, img_bytes,
                              searchable_text=name)
         except Exception as e:
-            st.warning(f"Could not load {name}: {e}")
+            failed.append(f"{name} ({e})")
 
-    progress.progress(1.0, text="Done!")
     progress.empty()
-    st.success(f"Loaded {len(to_load)} sample image(s).")
+    loaded = len(to_load) - len(failed)
+    note = f"Added {loaded} sample {'chart' if loaded == 1 else 'charts'} to your library."
+    if failed:
+        note += " Could not load: " + "; ".join(failed)
+    # Rerun so the sidebar library, drawn earlier in this run, lists them too.
+    st.session_state.flash = note
+    st.rerun()
 
 if st.session_state.load_samples_requested:
     st.session_state.load_samples_requested = False
     load_sample_images()
 
-# about expander
-with st.expander("ℹ️ About this app"):
-    st.markdown(f"""
-    **Unified RAG** uses **Gemini Embedding 2** (`gemini-embedding-2-preview`) to embed your content
-    into a single unified vector space, and `{MANAGED_ANSWER_MODEL}` to generate answers from retrieved content.
-
-    **Supported content and API limits:**
-
-    | Modality | Formats | Limit | Handling |
-    |---|---|---|---|
-    | Images | PNG, JPG | 4096px (auto-resized) | Per-file or auto caption |
-    | PDFs | PDF | 4 pages per embed call | Overlap chunking + text for BM25 |
-    | Audio | MP3, WAV | 80s per chunk | Timestamped chunks |
-    | Video | MP4, MOV | Long files sampled | Adaptive frame intervals + timestamps |
-
-    **How it works:** Upload → embed into Chroma (or Google File Search) → hybrid local search
-    (dense + BM25 + RRF) → top-K chunks and source IDs → Gemini Flash answer.
-    """)
+if _flash := st.session_state.pop("flash", None):
+    st.toast(_flash, icon=":material/library_add_check:")
 
 # process uploads from sidebar
 if uploaded_files:
@@ -936,7 +960,7 @@ if uploaded_files:
         elif mime in ("video/mp4", "video/quicktime"):
             duration = get_video_duration_seconds(file_bytes)
             if duration is not None and duration > VIDEO_MAX_SECONDS:
-                st.sidebar.info(f"⏱️ {file.name} is long; using adaptive frame sampling.")
+                st.sidebar.info(f"{file.name} is long, so frames are sampled at a wider interval.")
             stored_video_path = persist_blob(file_bytes, mime, file.name)
             interval = choose_frame_interval(duration)
             frames = extract_video_frames(file_bytes, interval_sec=interval)
@@ -1012,42 +1036,75 @@ def _escaped_stream(chunks):
         yield chunk.replace("$", "\\$") if chunk else chunk
 
 
-def render_results_gallery(results, show_score=False):
+def stream_answer(chunks) -> str:
+    """Stream answer text into the page with [S1] markers drawn as highlights.
+
+    Returns the raw text (markers intact) for the chat history.
+    """
+    slot = st.empty()
+    text = ""
+    for chunk in _escaped_stream(chunks):
+        if chunk:
+            text += chunk
+            slot.markdown(mark_citations(text))
+    slot.markdown(mark_citations(text))
+    return text
+
+
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]#|~<>])")
+
+
+def _md_escape(text: str) -> str:
+    """Escape a file name so underscores or brackets in it don't turn into markdown."""
+    return _MD_SPECIAL.sub(r"\\\1", text)
+
+
+def _display_name_and_locator(res: dict) -> tuple[str, str]:
+    """Split a chunk name like "report.pdf · pages 1–4" into file name and locator."""
+    base, _, rest = (res.get("name") or "Unknown source").partition(" · ")
+    if res.get("type") == "image" and rest:
+        return base, rest  # an image's caption says more than "image"
+    return base, source_locator(res)
+
+
+def render_thumbnail(res: dict):
+    """The cited page, chart or frame itself, or a player seeked to the clip."""
+    res_type = res.get("type", "")
+    if res_type == "image" and res.get("bytes"):
+        st.image(res["bytes"], width="stretch")
+    elif res_type in ("pdf", "video_frame") and res.get("preview_bytes"):
+        st.image(res["preview_bytes"], width="stretch")
+    elif res_type == "audio" and res.get("bytes"):
+        st.audio(res["bytes"], format=res.get("mime"), start_time=_seek_seconds(res.get("timestamp_start_sec")))
+    elif res_type == "video" and res.get("bytes"):
+        st.video(res["bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
+    # Full source videos are not rendered per card: one big file copied per hit.
+    # The player sits one click away in the "Open Sn" expander.
+
+
+def render_evidence(results, show_score=False):
+    """Source cards for an answer (or image-search matches), then one expander
+    per cited source that opens the exact page, frame or clip."""
     if not results:
         return
-    cols = st.columns(min(len(results), 5))
-    for col, res in zip(cols, results):
-        with col:
-            res_type = res.get("type", "")
-            if res_type == "image":
-                st.image(res["bytes"], width="stretch")
-            elif res_type == "pdf":
-                if res.get("preview_bytes"):
-                    st.image(res["preview_bytes"], width="stretch")
-                else:
-                    st.markdown("📄 PDF")
-            elif res_type == "audio":
-                st.audio(res["bytes"], format=res.get("mime"), start_time=_seek_seconds(res.get("timestamp_start_sec")))
-            elif res_type == "video":
-                st.video(res["bytes"], start_time=_seek_seconds(res.get("timestamp_start_sec")))
-            elif res_type == "video_frame":
-                # Show just the frame image. Rendering the full source video per
-                # result is enormous (one big file copied per hit); the source
-                # video stays one click away under "Open Sn".
-                if res.get("preview_bytes"):
-                    st.image(res["preview_bytes"], width="stretch")
-                    st.caption("🎥 video frame")
-                else:
-                    st.markdown("🎞️ Frame")
-            else:
-                st.markdown("📄")
-            
-            citation_prefix = f"[{res['citation_id']}] " if res.get("citation_id") else ""
+    ncols = min(len(results), 3)
+    cols = st.columns(ncols)
+    for i, res in enumerate(results):
+        name, locator = _display_name_and_locator(res)
+        with cols[i % ncols], st.container(border=True):
+            render_thumbnail(res)
+            chip = f":yellow-background[**{res['citation_id']}**] " if res.get("citation_id") else ""
+            st.markdown(f"{chip}{_md_escape(name)}")
+            detail = locator
             if show_score:
-                st.caption(f"**{citation_prefix}{res.get('name', 'Unknown')}**")
-                st.caption(f"Score: `{res.get('score', 0):.4f}`")
-            else:
-                st.caption(f"{citation_prefix}{res.get('name', 'Unknown')}")
+                detail += f", similarity {res.get('score', 0):.3f}"
+            st.caption(detail)
+    for res in results:
+        if not res.get("citation_id"):
+            continue
+        name, locator = _display_name_and_locator(res)
+        with st.expander(f"Open {res['citation_id']}: {name} ({locator})", expanded=False):
+            render_source_inline(res)
 
 
 def render_source_inline(res: dict):
@@ -1055,14 +1112,6 @@ def render_source_inline(res: dict):
     or a player seeked to the matched timestamp."""
     rtype = res.get("type")
     seek = _seek_seconds(res.get("timestamp_start_sec"))
-    meta_bits = []
-    if res.get("page_range"):
-        meta_bits.append(str(res["page_range"]))
-    if res.get("timestamp_start_sec") is not None:
-        meta_bits.append(format_timestamp(float(res.get("timestamp_start_sec") or 0)))
-    if meta_bits:
-        st.caption(" · ".join(meta_bits))
-
     if rtype in ("pdf", "video_frame") and res.get("preview_bytes"):
         st.image(res["preview_bytes"], width="stretch")
     elif rtype == "image" and (res.get("preview_bytes") or res.get("bytes")):
@@ -1071,89 +1120,117 @@ def render_source_inline(res: dict):
         st.audio(res["bytes"], format=res.get("mime"), start_time=seek)
     if rtype == "video_frame" and res.get("video_bytes"):
         st.video(res["video_bytes"], start_time=seek)
+    if res.get("searchable_text") and rtype in ("pdf", "audio", "video_frame"):
+        with st.container(height=180, border=False):
+            st.caption(_md_escape(res["searchable_text"]))
 
-st.markdown("---")
-st.subheader("💬 Chat with your Documents")
+
+def render_answer_footer(text: str, citations: list[str], prompt_tokens: int, usage, key: str):
+    """Managed-backend source names, read-aloud and token cost under an answer."""
+    if citations:
+        st.caption("Sources: " + "; ".join(citations))
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    if c1.button("Read aloud", key=key, icon=":material/volume_up:", type="tertiary",
+                 help="Read this answer aloud"):
+        st.session_state.tts_pending = strip_citations(text)
+        st.rerun()
+    if prompt_tokens:
+        c2.caption(format_prompt_cost(prompt_tokens, usage))
+
+
+def render_about():
+    with st.expander("How it works", icon=":material/info:"):
+        st.markdown(f"""
+Every file is embedded with **Gemini Embedding 2** (`{EMBEDDING_MODEL}`) into one shared
+vector space, so a text question can land on a chart, a PDF page or a video frame.
+Answers come from `{MANAGED_ANSWER_MODEL}`, which only sees the retrieved chunks and cites them as [S1], [S2] and so on.
+
+| Type | Formats | Limit | How it is indexed |
+|---|---|---|---|
+| Images | PNG, JPG | 4096px (auto-resized) | Per-file or auto caption |
+| PDFs | PDF | 4 pages per embed call | Overlapping page chunks, text kept for keyword search |
+| Audio | MP3, WAV | 80s per chunk | Timestamped chunks, optional transcript |
+| Video | MP4, MOV | Long files sampled | Frames at adaptive intervals, with timestamps |
+
+Search runs dense vectors and BM25 keyword ranking side by side and fuses them with
+reciprocal rank fusion. The top chunks go to the answer model with their source IDs.
+Managed mode hands the files to Google File Search instead.
+""")
+
 
 if not st.session_state.doc_sources:
-    st.markdown("#### 👋 Welcome to Unified RAG")
-    st.write(
-        "Search across PDFs, images, audio, and video in one place. Ask questions in plain "
-        "language and get answers grounded in your files, with citations."
-    )
-    st.caption("Supported: PDF · PNG/JPG · MP3/WAV · MP4/MOV")
-    wc1, wc2 = st.columns([1, 2])
-    if wc1.button("⚡ Load 6 sample charts", key="welcome_load_samples", use_container_width=True):
-        st.session_state.load_samples_requested = True
-        st.rerun()
-    wc2.caption("…or add your own files from the sidebar on the left 👈")
+    with st.container(border=True):
+        st.subheader("Your library is empty")
+        st.markdown(
+            "Add PDFs, images, audio or video from the sidebar. Each file is split into pages, "
+            "frames or clips and embedded into one index, so a single question searches all of them."
+        )
+        st.caption("PDF, PNG, JPG, MP3, WAV, MP4 and MOV")
+        wc1, wc2 = st.columns([2, 3], vertical_alignment="center")
+        if wc1.button("Load 6 sample charts", key="welcome_load_samples", type="primary", width="stretch"):
+            st.session_state.load_samples_requested = True
+            st.rerun()
+        wc2.caption(SAMPLE_CHARTS_HELP)
 else:
     top_k = st.session_state.get("top_k", 3)  # set in the sidebar Settings expander
 
     # Starter prompts before the first question, so a new user sees it work fast.
     if not st.session_state.messages:
-        st.caption("Try asking:")
+        st.markdown("**Try a question**")
         starters = ["What are these files about?", "Summarize the key points", "What figures stand out?"]
         for _col, _prompt in zip(st.columns(len(starters)), starters):
-            if _col.button(_prompt, key=f"starter_{_prompt}", use_container_width=True):
+            if _col.button(_prompt, key=f"starter_{_prompt}", width="stretch"):
                 st.session_state.pending_query = _prompt
                 st.rerun()
 
     # Render the full chat history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    for msg_idx, msg in enumerate(st.session_state.messages):
+        with st.chat_message(msg["role"], avatar=AVATARS[msg["role"]]):
+            st.markdown(mark_citations(msg["content"]) if msg["role"] == "assistant" else msg["content"])
             if msg.get("results"):
-                render_results_gallery(msg["results"])
-            if msg.get("citations"):
-                st.caption(f"**Sources:** {', '.join(msg['citations'])}")
-            if msg.get("prompt_tokens"):
-                st.caption(format_prompt_cost(msg["prompt_tokens"], msg.get("usage")))
-            # Read Aloud button — only for assistant messages
+                render_evidence(msg["results"], show_score=msg.get("image_search", False))
             if msg["role"] == "assistant" and msg.get("content"):
-                msg_idx = st.session_state.messages.index(msg)
-                if st.button("🔊 Read", key=f"tts_{msg_idx}", help="Read this answer aloud"):
-                    st.session_state.tts_pending = msg["content"]
-                    st.rerun()
+                render_answer_footer(
+                    msg["content"],
+                    [] if msg.get("results") else msg.get("citations", []),
+                    msg.get("prompt_tokens", 0),
+                    msg.get("usage"),
+                    key=f"tts_{msg_idx}",
+                )
 
     # Chat input — a starter-prompt click feeds in via pending_query
-    query = (st.chat_input("Ask a question about your documents…", key="chat_input")
+    query = (st.chat_input("Ask about your library…", key="chat_input")
              or st.session_state.pop("pending_query", None))
 
     if query:
         st.session_state.last_usage = None  # reset; populated by the answer call
         st.session_state.prompt_tokens = 0  # accumulates this prompt's full token cost
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=AVATARS["user"]):
             st.markdown(query)
         st.session_state.messages.append({"role": "user", "content": query})
 
         # Resolve strategy — Auto runs the router first
         if retrieval_strategy == "Auto (Hybrid)":
-            with st.spinner("🤖 Routing query to best backend…"):
+            with st.spinner("Choosing a search backend…"):
                 route = route_query(query)
             # Only use managed if there are actually managed docs; otherwise the
             # store is empty and the router would send the query nowhere useful.
             has_managed_docs = any(s.get("backend") == MANAGED_BACKEND for s in st.session_state.doc_sources)
             use_managed = (route == "managed" and has_managed_docs)
-            st.toast(f"Routed to **{'Google Managed RAG' if use_managed else 'Local Vector Store'}**", icon="🔀")
+            st.toast(f"Searching {'Google File Search' if use_managed else 'the local index'}",
+                     icon=":material/alt_route:")
         else:
             use_managed = (retrieval_strategy == "Managed RAG (Google File Search)")
 
         if use_managed:
-            with st.chat_message("assistant"):
-                with st.spinner("Searching Google backend…"):
+            with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+                with st.spinner("Searching Google File Search…"):
                     gen, citations = answer_managed(query,
                                                    history=st.session_state.messages)
-                full_text = st.write_stream(_escaped_stream(gen))
-                if citations:
-                    st.caption(f"**Sources:** {', '.join(citations)}")
+                full_text = stream_answer(gen)
                 usage = st.session_state.get("last_usage")
                 prompt_tokens = st.session_state.get("prompt_tokens", 0)
-                if prompt_tokens:
-                    st.caption(format_prompt_cost(prompt_tokens, usage))
-                if st.button("🔊 Read", key="tts_live_managed", help="Read this answer aloud"):
-                    st.session_state.tts_pending = full_text
-                    st.rerun()
+                render_answer_footer(full_text, citations, prompt_tokens, usage, key="tts_live_managed")
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_text,
@@ -1167,31 +1244,23 @@ else:
             # standalone query so retrieval stays on the prior subject. The answer
             # still uses the original wording.
             search_query = gemini.rewrite_search_query(query, st.session_state.messages[:-1])
-            with st.spinner("Searching Local Vector Store…"):
+            with st.spinner("Searching the local index…"):
                 results = search(search_query, top_k=top_k)
 
-            with st.chat_message("assistant"):
+            with st.chat_message("assistant", avatar=AVATARS["assistant"]):
                 if results:
                     selected_results = select_context_results(results, max_results=top_k)
-                    full_text = st.write_stream(_escaped_stream(
+                    full_text = stream_answer(
                         answer(query, selected_results,
                                history=st.session_state.messages)
-                    ))
+                    )
                     source_labels = [
                         f"[{res['citation_id']}] {res['name']}" for res in selected_results
                     ]
                     usage = st.session_state.get("last_usage")
                     prompt_tokens = st.session_state.get("prompt_tokens", 0)
-                    if prompt_tokens:
-                        st.caption(format_prompt_cost(prompt_tokens, usage))
-                    render_results_gallery(selected_results)
-                    st.caption("Sources — expand to view the cited page, frame, or clip:")
-                    for src in selected_results:
-                        with st.expander(f"[{src['citation_id']}] {src.get('name', 'source')}", expanded=False):
-                            render_source_inline(src)
-                    if st.button("🔊 Read", key="tts_live_local", help="Read this answer aloud"):
-                        st.session_state.tts_pending = full_text
-                        st.rerun()
+                    render_evidence(selected_results)
+                    render_answer_footer(full_text, [], prompt_tokens, usage, key="tts_live_local")
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": full_text,
@@ -1201,8 +1270,9 @@ else:
                         "prompt_tokens": prompt_tokens,
                     })
                 else:
-                    msg = "No results found — try rephrasing your question."
-                    st.warning(msg)
+                    msg = ("Nothing in your library matched that question. "
+                           "Try other wording, or check the file is listed in the library.")
+                    st.markdown(msg)
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": msg,
@@ -1210,21 +1280,21 @@ else:
                         "citations": [],
                     })
 
-# Image query processing (fired by the sidebar Find Similar button)
+# Image query processing (fired by the sidebar Find similar button)
 if run_img_query and query_image_sidebar:
     query_bytes = query_image_sidebar.read()
     query_mime = query_image_sidebar.type
     dim = st.session_state.get("embedding_dim", 3072)
 
     # Post the query image as a user message
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATARS["user"]):
         st.image(query_bytes, width=200, caption="Image query")
     st.session_state.messages.append({
         "role": "user",
-        "content": "🔍 Image similarity search",
+        "content": f"Image search: {query_image_sidebar.name}",
     })
 
-    with st.spinner("Embedding query image…"):
+    with st.spinner("Embedding the query image…"):
         try:
             result = call_with_retry(lambda: client.models.embed_content(
                 model="gemini-embedding-2-preview",
@@ -1242,21 +1312,22 @@ if run_img_query and query_image_sidebar:
 
     if query_emb is not None:
         img_results = search(query=None, top_k=top_k_img, query_emb=query_emb)
+        found = (f"The {len(img_results)} closest {'match' if len(img_results) == 1 else 'matches'} "
+                 "in your library.")
 
-        with st.chat_message("assistant"):
-            st.markdown(f"Found **{len(img_results)}** similar item(s):")
-            render_results_gallery(img_results, show_score=True)
+        with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+            st.markdown(found)
+            render_evidence(img_results, show_score=True)
         st.session_state.messages.append({
             "role": "assistant",
-            "content": f"Found {len(img_results)} similar item(s) for your image query.",
+            "content": found,
             "results": img_results,
             "citations": [],
+            "image_search": True,
         })
 
 # Running token total for the session — rendered last so it reflects this run's calls.
-st.sidebar.markdown("---")
-st.sidebar.caption(f"🔢 Session usage: {st.session_state.get('session_tokens', 0):,} tokens")
+st.sidebar.caption(f"Session usage: {st.session_state.get('session_tokens', 0):,} tokens")
 
-# footer
-st.markdown("---")
-st.caption(f"Unified RAG · Powered by Gemini Embedding 2 and {MANAGED_ANSWER_MODEL}")
+render_about()
+st.caption(f"Unified RAG, built on Gemini Embedding 2 and {MANAGED_ANSWER_MODEL}.")

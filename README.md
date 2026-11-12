@@ -4,6 +4,8 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 
 [Live demo](https://unified-rag.streamlit.app/) — no signup, no API key. Hit **Load 6 sample charts** in the sidebar and ask it something. Uploads are capped there so one visitor cannot exhaust the container; clone the repo to run it without limits.
 
+![A question answered across six sample charts, citing each chart it used as S1 to S3](docs/images/cited-answer.png)
+
 The demo runs on a key the deployment supplies (`GOOGLE_API_KEY` in Streamlit secrets, see `.streamlit/secrets.toml.example`). Paste your own key in the sidebar and it takes priority. With no key configured anywhere, the app falls back to asking each visitor for one, which is how it behaves on a fresh clone.
 
 ## What's inside

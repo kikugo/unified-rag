@@ -7,6 +7,8 @@ from collections.abc import Callable
 from copy import copy
 from typing import Any
 
+from media_ingest import format_timestamp
+
 LOCAL_BACKEND = "local"
 MANAGED_BACKEND = "managed"
 TOKEN_RE = re.compile(r"[a-z0-9_]+", re.IGNORECASE)
@@ -21,15 +23,15 @@ def is_rate_limit_error(error: Exception) -> bool:
 def format_token_usage(usage: dict | None) -> str:
     """One-line token summary for a RAG answer.
 
-    e.g. "🔢 1,234 tokens (in 980 · out 254)". Thinking tokens (gemini-2.5
+    e.g. "1,234 tokens (980 in, 254 out)". Thinking tokens (gemini-2.5
     reasoning) are shown separately when present, since total includes them.
     """
     if not usage:
         return ""
-    parts = [f"in {usage.get('prompt', 0):,}", f"out {usage.get('output', 0):,}"]
+    parts = [f"{usage.get('prompt', 0):,} in", f"{usage.get('output', 0):,} out"]
     if usage.get("thinking"):
-        parts.append(f"thinking {usage['thinking']:,}")
-    return f"🔢 {usage.get('total', 0):,} tokens ({' · '.join(parts)})"
+        parts.append(f"{usage['thinking']:,} thinking")
+    return f"{usage.get('total', 0):,} tokens ({', '.join(parts)})"
 
 
 def format_prompt_cost(prompt_total: int, answer_usage: dict | None = None) -> str:
@@ -43,8 +45,9 @@ def format_prompt_cost(prompt_total: int, answer_usage: dict | None = None) -> s
     answer_total = (answer_usage or {}).get("total", 0) or 0
     overhead = prompt_total - answer_total
     if answer_total and overhead > 0:
-        return f"🔢 {prompt_total:,} tokens this prompt (answer {answer_total:,} · routing & retrieval {overhead:,})"
-    return f"🔢 {prompt_total:,} tokens this prompt"
+        return (f"{prompt_total:,} tokens for this question "
+                f"(answer {answer_total:,}, routing and retrieval {overhead:,})")
+    return f"{prompt_total:,} tokens for this question"
 
 
 def is_transient_error(error: Exception) -> bool:
@@ -244,3 +247,42 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int = 60) -> list[str]:
 def within_demo_upload_cap(current: int, limit: int) -> bool:
     """True while another upload is allowed. Demo deployments only."""
     return current < limit
+
+
+# [S1] or [S1, S3]: the citation markers the answer prompt asks the model for.
+CITATION_RE = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)*)\](?!\()")
+
+
+def mark_citations(text: str) -> str:
+    """Render [S1]-style markers as highlighted Streamlit markdown chips."""
+    def _chips(match: re.Match) -> str:
+        ids = [part.strip() for part in match.group(1).split(",")]
+        return " ".join(f":yellow-background[**{cid}**]" for cid in ids)
+    return CITATION_RE.sub(_chips, text or "")
+
+
+def strip_citations(text: str) -> str:
+    """Drop citation markers so read-aloud doesn't spell out "S 1"."""
+    return re.sub(r"\s*" + CITATION_RE.pattern, "", text or "")
+
+
+SOURCE_TYPE_LABELS = {
+    "pdf": "PDF",
+    "image": "Image",
+    "audio": "Audio",
+    "video": "Video",
+    "video_frame": "Video",
+}
+
+
+def source_locator(res: dict[str, Any]) -> str:
+    """Where in the file a cited chunk sits: its pages, clip start or frame time."""
+    rtype = res.get("type")
+    start = res.get("timestamp_start_sec")
+    if rtype == "pdf" and res.get("page_range"):
+        return str(res["page_range"])
+    if rtype == "audio" and start is not None:
+        return f"clip from {format_timestamp(float(start))}"
+    if rtype in ("video", "video_frame") and start is not None:
+        return f"frame at {format_timestamp(float(start))}"
+    return SOURCE_TYPE_LABELS.get(rtype, "source")

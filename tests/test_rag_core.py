@@ -9,10 +9,13 @@ from rag_core import (
     format_token_usage,
     is_rate_limit_error,
     is_transient_error,
+    mark_citations,
     pop_source_by_id,
     reciprocal_rank_fusion,
     select_context_results,
     source_artifacts,
+    source_locator,
+    strip_citations,
     tokenize_for_search,
     within_demo_upload_cap,
 )
@@ -132,7 +135,7 @@ class RagCoreTest(unittest.TestCase):
 
     def test_format_prompt_cost(self):
         self.assertEqual(format_prompt_cost(0), "")
-        self.assertEqual(format_prompt_cost(500), "🔢 500 tokens this prompt")
+        self.assertEqual(format_prompt_cost(500), "500 tokens for this question")
         out = format_prompt_cost(1500, {"total": 1234})
         self.assertIn("1,500 tokens", out)
         self.assertIn("answer 1,234", out)
@@ -141,9 +144,33 @@ class RagCoreTest(unittest.TestCase):
     def test_format_token_usage(self):
         self.assertEqual(format_token_usage(None), "")
         out = format_token_usage({"prompt": 980, "output": 254, "total": 1234})
-        self.assertEqual(out, "🔢 1,234 tokens (in 980 · out 254)")
+        self.assertEqual(out, "1,234 tokens (980 in, 254 out)")
         with_think = format_token_usage({"prompt": 8, "output": 2, "total": 30, "thinking": 20})
-        self.assertIn("thinking 20", with_think)
+        self.assertIn("20 thinking", with_think)
+
+    def test_mark_citations_turns_markers_into_highlights(self):
+        self.assertEqual(
+            mark_citations("Revenue rose 13% [S1]."),
+            "Revenue rose 13% :yellow-background[**S1**].",
+        )
+        self.assertEqual(
+            mark_citations("Both grew [S1, S3] and [S2][S4]"),
+            "Both grew :yellow-background[**S1**] :yellow-background[**S3**] and "
+            ":yellow-background[**S2**]:yellow-background[**S4**]",
+        )
+        # A bare [S] or a markdown link label is left alone
+        self.assertEqual(mark_citations("see [Slides](http://x) [S]"), "see [Slides](http://x) [S]")
+
+    def test_strip_citations_for_read_aloud(self):
+        self.assertEqual(strip_citations("Revenue rose 13% [S1]. Margins held [S2, S3]."),
+                         "Revenue rose 13%. Margins held.")
+
+    def test_source_locator_names_page_clip_or_frame(self):
+        self.assertEqual(source_locator({"type": "pdf", "page_range": "pages 5\u20138"}), "pages 5\u20138")
+        self.assertEqual(source_locator({"type": "audio", "timestamp_start_sec": 80.0}), "clip from 1:20")
+        self.assertEqual(source_locator({"type": "video_frame", "timestamp_start_sec": 42}), "frame at 0:42")
+        self.assertEqual(source_locator({"type": "image"}), "Image")
+        self.assertEqual(source_locator({"type": "pdf"}), "PDF")
 
     def test_is_transient_error_includes_503_and_rate_limits(self):
         self.assertTrue(is_transient_error(Exception("503 UNAVAILABLE: model overloaded")))

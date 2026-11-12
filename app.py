@@ -1082,9 +1082,14 @@ def render_thumbnail(res: dict):
     # The player sits one click away in the "Open Sn" expander.
 
 
-def render_evidence(results, show_score=False):
+def render_evidence(results, show_score=False, with_video=True):
     """Source cards for an answer (or image-search matches), then one expander
-    per cited source that opens the exact page, frame or clip."""
+    per cited source that opens the exact page, frame or clip.
+
+    with_video=False skips the full source-video player. Expander contents render
+    even when collapsed, so older answers in the history would otherwise re-send
+    every cited video on each rerun.
+    """
     if not results:
         return
     ncols = min(len(results), 3)
@@ -1104,10 +1109,10 @@ def render_evidence(results, show_score=False):
             continue
         name, locator = _display_name_and_locator(res)
         with st.expander(f"Open {res['citation_id']}: {name} ({locator})", expanded=False):
-            render_source_inline(res)
+            render_source_inline(res, with_video=with_video)
 
 
-def render_source_inline(res: dict):
+def render_source_inline(res: dict, with_video: bool = True):
     """Render one cited source's detail inside its expander: the exact page/frame,
     or a player seeked to the matched timestamp."""
     rtype = res.get("type")
@@ -1118,7 +1123,7 @@ def render_source_inline(res: dict):
         st.image(res.get("preview_bytes") or res.get("bytes"), width="stretch")
     elif rtype == "audio" and res.get("bytes"):
         st.audio(res["bytes"], format=res.get("mime"), start_time=seek)
-    if rtype == "video_frame" and res.get("video_bytes"):
+    if with_video and rtype == "video_frame" and res.get("video_bytes"):
         st.video(res["video_bytes"], start_time=seek)
     if res.get("searchable_text") and rtype in ("pdf", "audio", "video_frame"):
         with st.container(height=180, border=False):
@@ -1184,11 +1189,13 @@ else:
                 st.rerun()
 
     # Render the full chat history
+    last_idx = len(st.session_state.messages) - 1
     for msg_idx, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"], avatar=AVATARS[msg["role"]]):
             st.markdown(mark_citations(msg["content"]) if msg["role"] == "assistant" else msg["content"])
             if msg.get("results"):
-                render_evidence(msg["results"], show_score=msg.get("image_search", False))
+                render_evidence(msg["results"], show_score=msg.get("image_search", False),
+                                with_video=msg_idx == last_idx)
             if msg["role"] == "assistant" and msg.get("content"):
                 render_answer_footer(
                     msg["content"],

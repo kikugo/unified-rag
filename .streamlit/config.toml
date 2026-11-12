@@ -1,0 +1,56 @@
+# Visual theme for the app. Citations ([S1], [S2], ...) render as yellow
+# highlighter marks in answers, so the yellow palette entry is the one accent
+# that carries meaning; everything else stays ink on paper.
+
+[theme]
+font = "Public Sans:https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap, sans-serif"
+headingFont = "Public Sans, sans-serif"
+codeFont = "Atkinson Hyperlegible Mono:https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;500&display=swap, monospace"
+headingFontSizes = ["2rem", "1.35rem", "1.1rem", "1rem", "0.95rem", "0.9rem"]
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+baseFontSize = 15
+baseRadius = "6px"
+buttonRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.light]
+primaryColor = "#1f5c7a"
+backgroundColor = "#fbfcfb"
+secondaryBackgroundColor = "#f0f3f1"
+textColor = "#1b2730"
+borderColor = "#d6ddd9"
+linkColor = "#1f5c7a"
+yellowColor = "#e8c62e"
+yellowBackgroundColor = "#f6e27a"
+yellowTextColor = "#3d3200"
+codeBackgroundColor = "#eef1ef"
+codeTextColor = "#1b2730"
+dataframeHeaderBackgroundColor = "#eef1ef"
+
+[theme.light.sidebar]
+backgroundColor = "#edf1ee"
+secondaryBackgroundColor = "#e3e9e5"
+borderColor = "#d0d8d3"
+
+[theme.dark]
+primaryColor = "#2f6f91"
+backgroundColor = "#141a1e"
+secondaryBackgroundColor = "#1f282d"
+textColor = "#e2e8ea"
+borderColor = "#2f3b42"
+linkColor = "#86bcd6"
+yellowColor = "#e8c62e"
+yellowBackgroundColor = "#5b4b0c"
+yellowTextColor = "#f8e9a6"
+codeBackgroundColor = "#1f282d"
+codeTextColor = "#e2e8ea"
+dataframeHeaderBackgroundColor = "#1f282d"
+
+[theme.dark.sidebar]
+backgroundColor = "#192126"
+secondaryBackgroundColor = "#222c32"
+borderColor = "#2f3b42"
+
+[client]
+toolbarMode = "minimal"

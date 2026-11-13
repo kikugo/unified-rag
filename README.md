@@ -6,6 +6,8 @@ I built this multimodal RAG app to see how far I could push Google Gemini alongs
 
 The demo runs on a key the deployment supplies (`GOOGLE_API_KEY` in Streamlit secrets, see `.streamlit/secrets.toml.example`). Paste your own key in the sidebar and it takes priority. With no key configured anywhere, the app falls back to asking each visitor for one, which is how it behaves on a fresh clone.
 
+With `DEMO_MODE` on, each visitor gets their own library (cleared after 6 idle hours), uploads are capped at 20 MB, 30 PDF pages, 10 minutes of audio and 5 minutes of video, and the shared key stops after `DEMO_DAILY_CALL_LIMIT` Gemini requests a day (default 1000). A visitor's own key is not counted.
+
 ## What's inside
 
 - **Gemini Embedding 2**: Maps everything (text, charts, audio clips, video frames) into a single vector space.
@@ -113,7 +115,7 @@ Retrieval and answering live in `rag/pipeline.py` now, behind one `Config` (mode
 The benchmark corpus is fixed: the EU AI Act as published in the Official Journal, plus a set of Wikipedia articles pinned by revision id, all listed in `corpus/manifest.json`. The extracted text is committed under `corpus/docs/`, so chunk boundaries can't drift when Wikipedia re-renders an old revision. Figures are indexed as image + caption chunks; the images themselves are downloaded, not committed.
 
 ```bash
-uv pip install -r requirements.txt
+uv pip install -r requirements-eval.txt
 uv run python -m rag.corpus fetch            # download raw sources and figures (text is already committed)
 uv run python -m rag.index build             # embed into .eval_index/, asks before spending API calls
 uv run python -m rag.cli "Which AI practices does Article 5 prohibit?" --mode hybrid_rrf --rerank

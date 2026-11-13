@@ -52,5 +52,11 @@ class SourceRegistryTest(unittest.TestCase):
         self.assertEqual(len(source_registry.list_sources("c1")), 2)
 
 
+    def test_delete_corpus_sources_keeps_other_corpora(self):
+        source_registry.upsert_source({"source_id": "s1", "corpus_id": "c1"})
+        source_registry.upsert_source({"source_id": "s2", "corpus_id": "c2"})
+        source_registry.delete_corpus_sources("c1")
+        self.assertEqual([s["source_id"] for s in source_registry.list_sources()], ["s2"])
+
 if __name__ == "__main__":
     unittest.main()

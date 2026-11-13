@@ -1,6 +1,6 @@
 import base64
 import io
-import json
+import logging
 import os
 import re
 import tempfile
@@ -28,6 +28,20 @@ from app.gemini import (
     route_query,
     transcribe_audio_bytes,
     transcribe_video_audio,
+)
+from app.guard import (
+    ANSWER_MAX_OUTPUT_TOKENS,
+    DEMO_LIMITS,
+    LOCAL_LIMITS,
+    MAX_QUESTION_CHARS,
+    BudgetedClient,
+    DailyBudget,
+    DemoBudgetExceeded,
+    check_upload,
+    clamp_question,
+    friendly_error,
+    image_too_large,
+    js_string_literal,
 )
 from media_ingest import (
     VIDEO_MAX_SECONDS,
@@ -64,13 +78,34 @@ from rag_core import (
     strip_citations,
     within_demo_upload_cap,
 )
-from source_registry import delete_source, list_sources, upsert_source
-from storage import delete_blob, hash_bytes, load_or_create_corpus_id, persist_blob, read_blob, set_corpus_id
+from source_registry import delete_corpus_sources, delete_source, list_sources, upsert_source
+from storage import (
+    STORAGE_ROOT,
+    delete_blob,
+    forget_corpus,
+    hash_bytes,
+    load_or_create_corpus_id,
+    new_corpus_id,
+    persist_blob,
+    read_blob,
+    set_corpus_id,
+    stale_corpora,
+    touch_corpus,
+)
+
+log = logging.getLogger("unified_rag")
 
 # Demo deployment settings. Unset (the default) runs with no limits and the
 # full Pro-backed Managed RAG path, same as a local clone.
 DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
 MAX_UPLOADS_PER_SESSION = int(os.getenv("MAX_UPLOADS_PER_SESSION", "5"))
+# Gemini requests per UTC day on the shared demo key, across every visitor and
+# session in this process. A visitor's own key is not counted. A reload used to
+# reset the only limit there was (the per-session upload counter).
+DEMO_DAILY_CALL_LIMIT = int(os.getenv("DEMO_DAILY_CALL_LIMIT", "1000"))
+# Demo libraries are per session; ones idle this long are deleted.
+DEMO_CORPUS_TTL_HOURS = float(os.getenv("DEMO_CORPUS_TTL_HOURS", "6"))
+UPLOAD_LIMITS = DEMO_LIMITS if DEMO_MODE else LOCAL_LIMITS
 # A demo in front of strangers stays on the cheaper model so one visitor cannot
 # exhaust the daily quota. Both were on the 2.5 line until 2026-08-01, when that
 # generation started returning 404 to newly issued API keys; 2.5 Pro was also
@@ -102,7 +137,14 @@ if "messages" not in st.session_state:
 if "tts_pending" not in st.session_state:
     st.session_state.tts_pending = None
 if "corpus_id" not in st.session_state:
-    st.session_state.corpus_id = load_or_create_corpus_id()
+    # The demo gives every session its own library, so one visitor's uploads
+    # and "Clear all" never reach another's. A local run keeps one persisted
+    # library that survives restarts.
+    st.session_state.corpus_id = new_corpus_id() if DEMO_MODE else load_or_create_corpus_id()
+if "attempted_uploads" not in st.session_state:
+    # file_ids already processed, whether they worked or not, so a failed
+    # upload still sitting in the uploader is not retried on every rerun.
+    st.session_state.attempted_uploads = set()
 if "pending_clear_all" not in st.session_state:
     st.session_state.pending_clear_all = False
 if "confirm_clear_all" not in st.session_state:
@@ -124,7 +166,7 @@ if "demo_uploads_this_session" not in st.session_state:
 # so a restart or browser refresh doesn't drop everything that's still indexed.
 if "rehydrated" not in st.session_state:
     st.session_state.rehydrated = True
-    if not st.session_state.doc_sources:
+    if not st.session_state.doc_sources and not DEMO_MODE:
         restored = build_rehydrated_sources(list_sources(st.session_state.corpus_id))
         if restored:
             st.session_state.doc_sources = restored
@@ -134,8 +176,8 @@ client = None
 
 def speak_text(text: str):
     """Fire a Web Speech API utterance in the browser. Zero-height iframe, no dependencies."""
-    # Sanitise the text so it's safe to embed in a JS string literal via json.dumps
-    js_text = json.dumps(text)
+    # json.dumps alone let "</script>" in an answer close the tag; this escapes < > &.
+    js_text = js_string_literal(text)
     components.html(
         f"""
         <script>
@@ -184,6 +226,18 @@ def resolve_hosted_key() -> str:
 
 HOSTED_KEY = resolve_hosted_key()
 
+
+def start_new_corpus():
+    """Point this session at a fresh, empty library.
+
+    In the demo the old corpus is left to the idle sweep, which also removes
+    its rows from the other dimension's collection.
+    """
+    st.session_state.corpus_id = new_corpus_id()
+    st.session_state.attempted_uploads = set()
+    if not DEMO_MODE:
+        set_corpus_id(st.session_state.corpus_id)
+
 # sidebar: the library (add, browse, delete), image search, settings, key
 SAMPLE_CHARTS_HELP = ("Six Q4 2024 earnings charts (Tesla, Netflix, Nike, Google, Accenture, "
                       "Tencent), enough to try a question in a few seconds.")
@@ -221,7 +275,13 @@ with st.sidebar:
         type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
         accept_multiple_files=True,
         label_visibility="collapsed",
+        max_upload_size=UPLOAD_LIMITS.max_mb,
     )
+    if DEMO_MODE:
+        st.caption(f"Demo limits: {UPLOAD_LIMITS.max_mb} MB per file, "
+                   f"{UPLOAD_LIMITS.max_pdf_pages} PDF pages, "
+                   f"{UPLOAD_LIMITS.max_audio_seconds // 60} min audio, "
+                   f"{UPLOAD_LIMITS.max_video_seconds // 60} min video.")
 
     # Show ingest options only for the file types actually selected, so a PDF
     # upload isn't buried under image-caption and audio fields.
@@ -349,6 +409,7 @@ with st.sidebar:
             accept_multiple_files=False,
             key="image_query_uploader",
             label_visibility="collapsed",
+            max_upload_size=UPLOAD_LIMITS.max_mb,
         )
         top_k_img = st.slider("Results", min_value=1, max_value=5, value=3, key="top_k_img")
         run_img_query = st.button(
@@ -375,10 +436,13 @@ with st.sidebar:
             help="Draft a hypothetical answer, embed it, and average with your question's embedding. "
                  "Adds a Gemini call per search.",
         )
-        st.caption("Remote ChromaDB (optional). Leave blank to use the local database.")
-        st.text_input("Chroma Tenant", value="", key="chroma_tenant")
-        st.text_input("Chroma Database", value="", key="chroma_database")
-        st.text_input("Chroma API Key", type="password", key="chroma_api_key")
+        if not DEMO_MODE:
+            # Not offered on the public demo: it would point the server at
+            # whatever host a visitor typed.
+            st.caption("Remote ChromaDB (optional). Leave blank to use the local database.")
+            st.text_input("Chroma Tenant", value="", key="chroma_tenant")
+            st.text_input("Chroma Database", value="", key="chroma_database")
+            st.text_input("Chroma API Key", type="password", key="chroma_api_key")
 
     if HOSTED_KEY:
         with st.expander("API key", icon=":material/key:", expanded=False):
@@ -390,8 +454,7 @@ with st.sidebar:
         if st.session_state.doc_sources:
             st.session_state.doc_embeddings = []
             st.session_state.doc_sources = []
-            st.session_state.corpus_id = str(uuid.uuid4())
-            set_corpus_id(st.session_state.corpus_id)
+            start_new_corpus()
             st.toast("Embedding dimension changed, so the library was cleared. Re-upload to re-embed.",
                      icon=":material/warning:")
             st.session_state.active_dim = st.session_state.embedding_dim
@@ -400,12 +463,45 @@ with st.sidebar:
 
 # init client
 @st.cache_resource
-def get_gemini_client(api_key: str):
-    """Build the Gemini client once per key instead of on every Streamlit rerun."""
-    return genai.Client(api_key=api_key)
+def get_demo_budget() -> DailyBudget:
+    """One budget per process, shared by every session on the demo key."""
+    return DailyBudget(DEMO_DAILY_CALL_LIMIT, path=STORAGE_ROOT / "demo_budget.json")
+
+
+def session_client(api_key: str, budgeted: bool):
+    """This session's Gemini client, rebuilt only when its key changes.
+
+    Held in session state rather than a process-wide cache or module global, so
+    a visitor's own key never serves another session's calls.
+    """
+    fingerprint = (hash_bytes(api_key.encode()), budgeted)
+    if st.session_state.get("_client_fingerprint") != fingerprint:
+        raw = genai.Client(api_key=api_key)
+        st.session_state.gemini_session_client = BudgetedClient(raw, get_demo_budget()) if budgeted else raw
+        st.session_state._client_fingerprint = fingerprint
+    return st.session_state.gemini_session_client
+
+
+# The budget applies to the deployment's key in demo mode only.
+USING_DEMO_KEY = bool(HOSTED_KEY) and google_api_key == HOSTED_KEY
+BUDGETED = DEMO_MODE and USING_DEMO_KEY
+st.session_state.using_demo_key = USING_DEMO_KEY
+
+
+def budget_spent() -> bool:
+    return BUDGETED and get_demo_budget().remaining() <= 0
+
+
+def show_error(e: Exception, warn: bool = False):
+    """Show a message a visitor can act on; the raw error goes to the log."""
+    (st.warning if warn else st.error)(friendly_error(e, using_demo_key=USING_DEMO_KEY))
+
+
+BUDGET_SPENT_MSG = ("The shared demo key has used today's budget. Paste your own Google API key "
+                    "in the sidebar to keep going, or come back tomorrow.")
 
 if google_api_key:
-    client = get_gemini_client(google_api_key)
+    client = session_client(google_api_key, BUDGETED)
     gemini.set_client(client)
 else:
     st.info(
@@ -436,17 +532,64 @@ try:
         name=f"unified_rag_{st.session_state.active_dim}",
         metadata={"hnsw:space": "cosine"}
     )
-except Exception as e:
-    st.error(f"Failed to initialize ChromaDB: {e}")
+except Exception:
+    log.exception("chroma init failed")
+    st.error("The search index could not be opened. Reload the page, and check the Chroma "
+             "settings if you entered any.")
     st.stop()
+
+
+@st.cache_resource
+def _sweep_clock() -> dict:
+    return {"last": 0.0}
+
+
+def sweep_idle_corpora():
+    """Delete demo libraries nobody has used for DEMO_CORPUS_TTL_HOURS.
+
+    Runs at most every ten minutes per process. Removes the index rows from
+    every dimension's collection, the registry rows and the corpus's blobs.
+    """
+    clock = _sweep_clock()
+    now = time.time()
+    if now - clock["last"] < 600:
+        return
+    clock["last"] = now
+    stale = stale_corpora(DEMO_CORPUS_TTL_HOURS * 3600, now=now)
+    stale = [cid for cid in stale if cid != st.session_state.corpus_id]
+    if not stale:
+        return
+    try:
+        collections = [c for c in chroma_client.list_collections()
+                       if getattr(c, "name", str(c)).startswith("unified_rag_")]
+    except Exception:
+        log.exception("could not list collections for the sweep")
+        return
+    for cid in stale:
+        try:
+            for coll in collections:
+                if not hasattr(coll, "delete"):
+                    coll = chroma_client.get_collection(str(coll))
+                coll.delete(where={"corpus_id": cid})
+            delete_corpus_sources(cid)
+            forget_corpus(cid)
+        except Exception:
+            log.exception("could not sweep corpus %s", cid)
+
+
+if DEMO_MODE:
+    touch_corpus(st.session_state.corpus_id)
+    sweep_idle_corpora()
+
 
 def delete_chroma_ids(ids: list[str]):
     if not ids:
         return
     try:
         chroma_collection.delete(ids=ids)
-    except Exception as e:
-        st.warning(f"Could not delete some local index entries: {e}")
+    except Exception:
+        log.exception("chroma delete failed")
+        st.warning("Some index entries could not be deleted. Try again.")
 
 def cleanup_local_artifacts(source: dict):
     for path_key in ("file_path", "preview_path", "video_path"):
@@ -461,8 +604,9 @@ def delete_current_corpus_from_chroma():
         for meta in existing.get("metadatas", []) or []:
             cleanup_local_artifacts(meta or {})
         delete_chroma_ids(existing.get("ids", []))
-    except Exception as e:
-        st.warning(f"Could not clear local index entries: {e}")
+    except Exception:
+        log.exception("clearing the corpus failed")
+        st.warning("The library could not be fully cleared. Try again.")
 
 if st.session_state.pending_delete_chroma_ids:
     delete_chroma_ids(st.session_state.pending_delete_chroma_ids)
@@ -478,13 +622,12 @@ if st.session_state.pending_clear_all:
     st.session_state.doc_embeddings = []
     st.session_state.doc_sources = []
     st.session_state.messages = []
-    st.session_state.corpus_id = str(uuid.uuid4())
-    set_corpus_id(st.session_state.corpus_id)
+    start_new_corpus()
     if st.session_state.google_store is not None and client is not None:
         try:
             client.file_search_stores.delete(name=st.session_state.google_store.name, config={'force': True})
         except Exception as e:
-            st.warning(f"Could not delete Google File Search store: {e}")
+            show_error(e, warn=True)
         st.session_state.google_store = None
     st.session_state.pending_clear_all = False
     st.rerun()
@@ -498,7 +641,7 @@ def get_or_create_google_store():
                 config={'display_name': 'unified-rag-ephemeral-store'}
             )
         except Exception as e:
-            st.error(f"Failed to create Google File Search Store: {e}")
+            show_error(e)
     return st.session_state.google_store
 
 def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str, content_hash: str = ""):
@@ -531,9 +674,15 @@ def add_file_to_google_store(file_name: str, file_bytes: bytes, mime: str, conte
             "content_hash": content_hash,
         })
     except Exception as e:
-        st.error(f"Google Upload Error for {file_name}: {e}")
+        st.error(f"{file_name} could not be added to Google File Search. "
+                 + friendly_error(e, using_demo_key=USING_DEMO_KEY))
     finally:
         os.remove(tmp_path)
+
+
+def blob_namespace() -> str | None:
+    """Demo blobs live in a per-session folder; a local run keeps the shared store."""
+    return st.session_state.corpus_id if DEMO_MODE else None
 
 
 def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_bytes: bytes,
@@ -547,8 +696,9 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
     """
     doc_id = str(uuid.uuid4())
     try:
-        file_path = persist_blob(file_bytes, mime, name)
-        preview_path = persist_blob(preview_bytes, "image/png", f"{name}_preview.png") if preview_bytes else None
+        file_path = persist_blob(file_bytes, mime, name, corpus_id=blob_namespace())
+        preview_path = (persist_blob(preview_bytes, "image/png", f"{name}_preview.png", corpus_id=blob_namespace())
+                        if preview_bytes else None)
         sid = source_id or (source_meta or {}).get("source_id") or str(uuid.uuid4())
 
         metadata: dict = {
@@ -618,8 +768,9 @@ def add_document(emb: np.ndarray, name: str, doc_type: str, mime: str, file_byte
             "chroma_ids": [doc_id],
             "artifacts": [artifact],
         })
-    except Exception as e:
-        st.error(f"Error saving to database: {e}")
+    except Exception:
+        log.exception("saving a chunk failed")
+        st.error(f"Part of {name.split(' · ')[0]} could not be saved to the index.")
 
 class _QueryEmbeddingError(Exception):
     """Raised by the app's query embedder after it has already shown the error."""
@@ -642,7 +793,7 @@ class _AppQueryEmbedder:
                 ),
             ))
         except Exception as e:
-            st.error(f"Query embedding error: {e}")
+            show_error(e)
             raise _QueryEmbeddingError() from e
         gemini.record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
@@ -679,8 +830,9 @@ def search(query: str = None, top_k: int = 3, query_emb: np.ndarray = None) -> l
         hits = retrieve(query, cfg, store, embedder, query_emb=query_emb)
     except _QueryEmbeddingError:
         return []
-    except Exception as e:
-        st.error(f"Database query error: {e}")
+    except Exception:
+        log.exception("search failed")
+        st.error("The search failed. Try again.")
         return []
 
     # Format the results
@@ -745,6 +897,7 @@ def answer(question: str, selected_results: list[dict],
             stream = client.models.generate_content_stream(
                 model=MANAGED_ANSWER_MODEL,
                 contents=contents,
+                config=types.GenerateContentConfig(max_output_tokens=ANSWER_MAX_OUTPUT_TOKENS),
             )
             raw_usage = None
             for chunk in stream:
@@ -767,7 +920,7 @@ def answer(question: str, selected_results: list[dict],
             if produced:
                 yield "\n\n*The answer was cut off by a model error. Ask again to get the rest.*"
             else:
-                yield "The model is busy right now. Try again in a moment."
+                yield friendly_error(e, using_demo_key=USING_DEMO_KEY)
             return
 
 def answer_managed(question: str,
@@ -795,6 +948,7 @@ def answer_managed(question: str,
             model=MANAGED_ANSWER_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
+                max_output_tokens=ANSWER_MAX_OUTPUT_TOKENS,
                 tools=[
                     types.Tool(
                         file_search=types.FileSearch(
@@ -823,9 +977,11 @@ def answer_managed(question: str,
                     yield c.text
 
         return _gen(), citations
-    except Exception:
+    except Exception as e:
+        message = friendly_error(e, using_demo_key=USING_DEMO_KEY)
+
         def _error():
-            yield "Google File Search is unavailable right now. Try again in a moment."
+            yield message
         return _error(), []
 
 SAMPLE_IMAGES = {
@@ -845,6 +1001,9 @@ def load_sample_images():
     if not to_load:
         st.session_state.flash = "The sample charts are already in your library."
         return
+    if budget_spent():
+        st.session_state.flash = BUDGET_SPENT_MSG
+        st.rerun()
 
     failed = []
     progress = st.progress(0, text="Loading sample charts…")
@@ -866,14 +1025,15 @@ def load_sample_images():
             if emb is not None:
                 add_document(emb, name, "image", mime, img_bytes,
                              searchable_text=name)
-        except Exception as e:
-            failed.append(f"{name} ({e})")
+        except Exception:
+            log.exception("sample %s failed", name)
+            failed.append(name)
 
     progress.empty()
     loaded = len(to_load) - len(failed)
     note = f"Added {loaded} sample {'chart' if loaded == 1 else 'charts'} to your library."
     if failed:
-        note += " Could not load: " + "; ".join(failed)
+        note += " Could not load " + ", ".join(failed) + ". Try again in a moment."
     # Rerun so the sidebar library, drawn earlier in this run, lists them too.
     st.session_state.flash = note
     st.rerun()
@@ -885,8 +1045,12 @@ if st.session_state.load_samples_requested:
 if _flash := st.session_state.pop("flash", None):
     st.toast(_flash, icon=":material/library_add_check:")
 
-# process uploads from sidebar
-if uploaded_files:
+# process uploads from sidebar. Each uploaded file is attempted once: the
+# uploader keeps its files across reruns, so without the attempted set a file
+# that failed (or was deleted from the library) was embedded again on every
+# click anywhere in the app.
+new_uploads = [f for f in (uploaded_files or []) if f.file_id not in st.session_state.attempted_uploads]
+if new_uploads:
     per_file_captions = parse_caption_map(image_captions_map_raw)
     # Dedup by content hash so re-uploads (and server reloads) don't re-embed the
     # same bytes, even if the filename changed.
@@ -895,10 +1059,11 @@ if uploaded_files:
     progress = st.sidebar.progress(0, text="Embedding…")
     added = 0
     skipped = 0
-    total = len(uploaded_files)
-    for i, file in enumerate(uploaded_files):
-        file_bytes = file.read()
-        mime = file.type
+    total = len(new_uploads)
+    for i, file in enumerate(new_uploads):
+        st.session_state.attempted_uploads.add(file.file_id)
+        file_bytes = file.getvalue()
+        mime = file.type or ""
         content_hash = hash_bytes(file_bytes)
         if content_hash in existing_hashes:
             skipped += 1
@@ -914,101 +1079,122 @@ if uploaded_files:
             )
             progress.progress((i + 1) / total, text=f"Skipped {file.name} (demo limit reached)")
             continue
+        if budget_spent():
+            skipped += 1
+            st.sidebar.warning(BUDGET_SPENT_MSG)
+            progress.progress((i + 1) / total, text=f"Skipped {file.name} (demo budget spent)")
+            continue
+        # Size, pages, duration and pixels are checked from headers, before any decoding.
+        refusal = check_upload(file_bytes, mime, UPLOAD_LIMITS)
+        if refusal:
+            skipped += 1
+            st.sidebar.warning(f"Skipped {file.name}: {refusal}.")
+            progress.progress((i + 1) / total, text=f"Skipped {file.name}")
+            continue
         existing_hashes.add(content_hash)
         st.session_state.demo_uploads_this_session += 1
         file_source_id = str(uuid.uuid4())  # one source row per uploaded file
 
-        if retrieval_strategy == "Managed RAG (Google File Search)":
-            add_file_to_google_store(file.name, file_bytes, mime, content_hash=content_hash)
-        elif mime == "application/pdf":
-            for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
-                chunk_text = extract_pdf_text(chunk_bytes)
-                for emb in embed_pdf(chunk_bytes):
-                    add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
-                                 preview_bytes=preview_png,
-                                 searchable_text=f"{file.name} {page_label}\n{chunk_text}",
-                                 source_meta={"page_range": page_label},
-                                 content_hash=content_hash, source_id=file_source_id)
-        elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
-            audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
-            audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
-            for chunk_bytes, start_sec, end_sec, chunk_mime in audio_chunks:
-                emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
-                if emb is not None:
-                    label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
-                    transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime) if transcribe_audio else ""
-                    audio_meta = attach_transcript_metadata(
-                        {
-                            "timestamp_start_sec": start_sec,
-                            "timestamp_end_sec": end_sec,
-                        },
-                        transcript=transcript,
-                    )
-                    add_document(
-                        emb,
-                        label,
-                        "audio",
-                        chunk_mime,
-                        chunk_bytes,
-                        searchable_text=build_audio_searchable_text(
-                            file.name, start_sec, end_sec, audio_meta.get("transcript", "")
-                        ),
-                        source_meta=audio_meta,
-                        content_hash=content_hash,
-                        source_id=file_source_id,
-                    )
-        elif mime in ("video/mp4", "video/quicktime"):
-            duration = get_video_duration_seconds(file_bytes)
-            if duration is not None and duration > VIDEO_MAX_SECONDS:
-                st.sidebar.info(f"{file.name} is long, so frames are sampled at a wider interval.")
-            stored_video_path = persist_blob(file_bytes, mime, file.name)
-            interval = choose_frame_interval(duration)
-            frames = extract_video_frames(file_bytes, interval_sec=interval)
-            if scene_sampling:
-                frames = select_scene_frames(frames)
-            transcript_windows = transcribe_video_audio(file_bytes) if transcribe_audio else []
-            for frame_png, ts in frames:
-                emb = embed_image(frame_png, mime_type="image/png")
-                if emb is not None:
-                    ts_label = format_timestamp(ts)
-                    frame_transcript = transcript_for_timestamp(ts, transcript_windows)
-                    video_meta = attach_transcript_metadata(
-                        {
-                            "timestamp_start_sec": ts,
-                            "timestamp_end_sec": ts + interval,
-                        },
-                        transcript=frame_transcript,
-                    )
-                    add_document(
-                        emb,
-                        f"{file.name} · {ts_label}",
-                        "video_frame",
-                        "image/png",
-                        file_bytes=frame_png,
-                        preview_bytes=frame_png,
-                        video_path=stored_video_path,
-                        searchable_text=build_video_frame_searchable_text(
-                            file.name, ts_label, video_meta.get("transcript", "")
-                        ),
-                        source_meta=video_meta,
-                        content_hash=content_hash,
-                        source_id=file_source_id,
-                    )
-        else:
-            norm_bytes, norm_mime = normalize_image(file_bytes, mime)
-            cap = per_file_captions.get(file.name, image_caption)
-            if not cap and auto_caption_images:
-                cap = auto_caption_image(norm_bytes, norm_mime)
-            if cap:
-                emb = embed_image_with_caption(norm_bytes, caption=cap, mime_type=norm_mime)
+        try:
+            if retrieval_strategy == "Managed RAG (Google File Search)":
+                add_file_to_google_store(file.name, file_bytes, mime, content_hash=content_hash)
+            elif mime == "application/pdf":
+                for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
+                    chunk_text = extract_pdf_text(chunk_bytes)
+                    for emb in embed_pdf(chunk_bytes):
+                        add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
+                                     preview_bytes=preview_png,
+                                     searchable_text=f"{file.name} {page_label}\n{chunk_text}",
+                                     source_meta={"page_range": page_label},
+                                     content_hash=content_hash, source_id=file_source_id)
+            elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
+                audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
+                audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
+                for chunk_bytes, start_sec, end_sec, chunk_mime in audio_chunks:
+                    emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
+                    if emb is not None:
+                        label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
+                        transcript = transcribe_audio_bytes(chunk_bytes, chunk_mime) if transcribe_audio else ""
+                        audio_meta = attach_transcript_metadata(
+                            {
+                                "timestamp_start_sec": start_sec,
+                                "timestamp_end_sec": end_sec,
+                            },
+                            transcript=transcript,
+                        )
+                        add_document(
+                            emb,
+                            label,
+                            "audio",
+                            chunk_mime,
+                            chunk_bytes,
+                            searchable_text=build_audio_searchable_text(
+                                file.name, start_sec, end_sec, audio_meta.get("transcript", "")
+                            ),
+                            source_meta=audio_meta,
+                            content_hash=content_hash,
+                            source_id=file_source_id,
+                        )
+            elif mime in ("video/mp4", "video/quicktime"):
+                duration = get_video_duration_seconds(file_bytes)
+                if duration is not None and duration > VIDEO_MAX_SECONDS:
+                    st.sidebar.info(f"{file.name} is long, so frames are sampled at a wider interval.")
+                stored_video_path = persist_blob(file_bytes, mime, file.name, corpus_id=blob_namespace())
+                interval = choose_frame_interval(duration)
+                frames = extract_video_frames(file_bytes, interval_sec=interval)
+                if scene_sampling:
+                    frames = select_scene_frames(frames)
+                transcript_windows = transcribe_video_audio(file_bytes) if transcribe_audio else []
+                for frame_png, ts in frames:
+                    emb = embed_image(frame_png, mime_type="image/png")
+                    if emb is not None:
+                        ts_label = format_timestamp(ts)
+                        frame_transcript = transcript_for_timestamp(ts, transcript_windows)
+                        video_meta = attach_transcript_metadata(
+                            {
+                                "timestamp_start_sec": ts,
+                                "timestamp_end_sec": ts + interval,
+                            },
+                            transcript=frame_transcript,
+                        )
+                        add_document(
+                            emb,
+                            f"{file.name} · {ts_label}",
+                            "video_frame",
+                            "image/png",
+                            file_bytes=frame_png,
+                            preview_bytes=frame_png,
+                            video_path=stored_video_path,
+                            searchable_text=build_video_frame_searchable_text(
+                                file.name, ts_label, video_meta.get("transcript", "")
+                            ),
+                            source_meta=video_meta,
+                            content_hash=content_hash,
+                            source_id=file_source_id,
+                        )
             else:
-                emb = embed_image(norm_bytes, mime_type=norm_mime)
-            if emb is not None:
-                label = f"{file.name} · {cap}" if cap else file.name
-                add_document(emb, label, "image", norm_mime, norm_bytes,
-                             searchable_text=build_image_searchable_text(file.name, cap or ""),
-                             source_meta={"caption": cap or ""},
-                             content_hash=content_hash, source_id=file_source_id)
+                norm_bytes, norm_mime = normalize_image(file_bytes, mime)
+                cap = per_file_captions.get(file.name, image_caption)
+                if not cap and auto_caption_images:
+                    cap = auto_caption_image(norm_bytes, norm_mime)
+                if cap:
+                    emb = embed_image_with_caption(norm_bytes, caption=cap, mime_type=norm_mime)
+                else:
+                    emb = embed_image(norm_bytes, mime_type=norm_mime)
+                if emb is not None:
+                    label = f"{file.name} · {cap}" if cap else file.name
+                    add_document(emb, label, "image", norm_mime, norm_bytes,
+                                 searchable_text=build_image_searchable_text(file.name, cap or ""),
+                                 source_meta={"caption": cap or ""},
+                                 content_hash=content_hash, source_id=file_source_id)
+
+        except DemoBudgetExceeded:
+            st.sidebar.warning(BUDGET_SPENT_MSG)
+            break
+        except Exception:
+            log.exception("ingesting %s failed", file.name)
+            st.sidebar.error(f"{file.name} could not be processed. Try another file.")
+            continue
 
         added += 1
         progress.progress((i + 1) / total, text=f"Processed {file.name}")
@@ -1017,9 +1203,7 @@ if uploaded_files:
     if added:
         st.sidebar.success(f"Added {added} file(s).")
     if skipped:
-        st.sidebar.info(f"Skipped {skipped} already-indexed file(s).")
-    if not added and not skipped:
-        st.sidebar.info("No new files to add.")
+        st.sidebar.info(f"Skipped {skipped} file(s).")
 
 def _seek_seconds(value) -> int:
     """Coerce a stored timestamp into an int start_time for st.audio/st.video."""
@@ -1206,8 +1390,16 @@ else:
                 )
 
     # Chat input — a starter-prompt click feeds in via pending_query
-    query = (st.chat_input("Ask about your library…", key="chat_input")
+    query = (st.chat_input("Ask about your library…", key="chat_input", max_chars=MAX_QUESTION_CHARS)
              or st.session_state.pop("pending_query", None))
+    query = clamp_question(query) if query else query
+
+    if query and budget_spent():
+        for role, content in (("user", query), ("assistant", BUDGET_SPENT_MSG)):
+            with st.chat_message(role, avatar=AVATARS[role]):
+                st.markdown(content)
+            st.session_state.messages.append({"role": role, "content": content, "results": [], "citations": []})
+        query = None
 
     if query:
         st.session_state.last_usage = None  # reset; populated by the answer call
@@ -1288,8 +1480,16 @@ else:
                     })
 
 # Image query processing (fired by the sidebar Find similar button)
+_img_refusal = None
 if run_img_query and query_image_sidebar:
-    query_bytes = query_image_sidebar.read()
+    _img_refusal = (BUDGET_SPENT_MSG if budget_spent()
+                    else image_too_large(query_image_sidebar.getvalue(), UPLOAD_LIMITS.max_image_pixels))
+    if _img_refusal:
+        st.sidebar.warning(_img_refusal if _img_refusal == BUDGET_SPENT_MSG
+                           else f"That image can't be searched: {_img_refusal}.")
+
+if run_img_query and query_image_sidebar and not _img_refusal:
+    query_bytes = query_image_sidebar.getvalue()
     query_mime = query_image_sidebar.type
     dim = st.session_state.get("embedding_dim", 3072)
 
@@ -1304,7 +1504,7 @@ if run_img_query and query_image_sidebar:
     with st.spinner("Embedding the query image…"):
         try:
             result = call_with_retry(lambda: client.models.embed_content(
-                model="gemini-embedding-2-preview",
+                model=EMBEDDING_MODEL,
                 contents=[types.Part.from_bytes(data=query_bytes, mime_type=query_mime)],
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_QUERY",
@@ -1314,7 +1514,7 @@ if run_img_query and query_image_sidebar:
             gemini.record_usage(getattr(result, "usage_metadata", None))
             query_emb = np.array(result.embeddings[0].values)
         except Exception as e:
-            st.error(f"Query embedding error: {e}")
+            show_error(e)
             query_emb = None
 
     if query_emb is not None:

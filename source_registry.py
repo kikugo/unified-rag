@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
 REGISTRY_PATH = Path(".unified_rag_store/source_registry.json")
+# Demo sessions share one process, so read-modify-write cycles are serialized.
+_lock = threading.Lock()
 
 
 def _load_registry() -> dict[str, Any]:
@@ -56,6 +59,11 @@ def _merge_source(existing: dict[str, Any], entry: dict[str, Any]) -> dict[str, 
 
 
 def upsert_source(entry: dict[str, Any]):
+    with _lock:
+        _upsert_source(entry)
+
+
+def _upsert_source(entry: dict[str, Any]):
     payload = _load_registry()
     sources = payload.get("sources", [])
     source_id = entry.get("source_id")
@@ -72,9 +80,18 @@ def upsert_source(entry: dict[str, Any]):
 
 
 def delete_source(source_id: str):
-    payload = _load_registry()
-    payload["sources"] = [s for s in payload.get("sources", []) if s.get("source_id") != source_id]
-    _save_registry(payload)
+    with _lock:
+        payload = _load_registry()
+        payload["sources"] = [s for s in payload.get("sources", []) if s.get("source_id") != source_id]
+        _save_registry(payload)
+
+
+def delete_corpus_sources(corpus_id: str):
+    """Drop every registry row that belongs to one corpus."""
+    with _lock:
+        payload = _load_registry()
+        payload["sources"] = [s for s in payload.get("sources", []) if s.get("corpus_id") != corpus_id]
+        _save_registry(payload)
 
 
 def list_sources(corpus_id: str | None = None) -> list[dict[str, Any]]:

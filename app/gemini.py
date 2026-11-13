@@ -1,10 +1,12 @@
 """Gemini API helpers: embedding, routing, captioning, and transcription.
 
 These wrap the Google GenAI client so `app.py` stays focused on UI and flow. The
-client is a per-session singleton, set once via `set_client`, so call sites stay
-simple. Functions read the active embedding dimension from Streamlit session
-state and report errors through Streamlit, so they belong to the app layer
-rather than the pure helper modules.
+client lives in this visitor's Streamlit session state, set via `set_client`. It
+used to be a module global, which every session in the process shared, so one
+visitor's key could end up serving another visitor's calls. Functions read the
+active embedding dimension from Streamlit session state and report errors
+through Streamlit, so they belong to the app layer rather than the pure helper
+modules.
 """
 from __future__ import annotations
 
@@ -13,18 +15,31 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
+from app.guard import UTILITY_MAX_OUTPUT_TOKENS, DemoBudgetExceeded, friendly_error
 from media_ingest import chunk_audio_bytes, decode_audio_to_wav, resize_image_if_needed
 from rag.models import EMBEDDING_MODEL, UTILITY_MODEL
 from rag.pipeline import HYDE_PROMPT, hyde_vector
 from rag_core import call_with_retry
 
-_client: genai.Client | None = None
+_SESSION_KEY = "gemini_client"
+_UTILITY_CONFIG = types.GenerateContentConfig(max_output_tokens=UTILITY_MAX_OUTPUT_TOKENS)
 
 
 def set_client(client: genai.Client) -> None:
-    """Register the active Gemini client for this session."""
-    global _client
-    _client = client
+    """Register the Gemini client for the current visitor's session."""
+    st.session_state[_SESSION_KEY] = client
+
+
+def _client() -> genai.Client:
+    return st.session_state[_SESSION_KEY]
+
+
+def _report(e: Exception) -> None:
+    """Show an embedding failure. A spent demo budget is raised instead, so the
+    caller stops the whole file rather than printing one error per chunk."""
+    if isinstance(e, DemoBudgetExceeded):
+        raise e
+    st.error(friendly_error(e, using_demo_key=bool(st.session_state.get("using_demo_key"))))
 
 
 def record_usage(usage) -> None:
@@ -59,9 +74,10 @@ def route_query(question: str) -> str:
         "Reply with exactly one word: local OR managed"
     )
     try:
-        resp = call_with_retry(lambda: _client.models.generate_content(
+        resp = call_with_retry(lambda: _client().models.generate_content(
             model=UTILITY_MODEL,
             contents=prompt,
+            config=_UTILITY_CONFIG,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
         # `resp.text` is None when a response is blocked or empty; the other
@@ -76,12 +92,13 @@ def route_query(question: str) -> str:
 
 def auto_caption_image(image_bytes: bytes, mime_type: str) -> str:
     try:
-        resp = _client.models.generate_content(
+        resp = _client().models.generate_content(
             model=UTILITY_MODEL,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 types.Part(text="Write a concise search caption for this image in one sentence."),
             ],
+            config=_UTILITY_CONFIG,
         )
         record_usage(getattr(resp, "usage_metadata", None))
         return (resp.text or "").strip()
@@ -108,9 +125,10 @@ def rewrite_search_query(query: str, history: list[dict] | None, max_turns: int 
         f"Conversation so far:\n{convo}\n\nLatest question: {query}\n\nStandalone search query:"
     )
     try:
-        resp = call_with_retry(lambda: _client.models.generate_content(
+        resp = call_with_retry(lambda: _client().models.generate_content(
             model=UTILITY_MODEL,
             contents=prompt,
+            config=_UTILITY_CONFIG,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
         rewritten = (resp.text or "").strip()
@@ -132,12 +150,13 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str) -> str:
         "If there is no clear speech, output exactly: NO_SPEECH"
     )
     try:
-        resp = call_with_retry(lambda: _client.models.generate_content(
+        resp = call_with_retry(lambda: _client().models.generate_content(
             model=UTILITY_MODEL,
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
                 types.Part(text=prompt),
             ],
+            config=_UTILITY_CONFIG,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
         text = (resp.text or "").strip()
@@ -156,15 +175,16 @@ def hyde_query_embedding(query: str, dim: int) -> np.ndarray | None:
     averaging lives in `rag.pipeline.hyde_vector`, shared with the CLI.
     """
     def draft(question: str) -> str:
-        resp = call_with_retry(lambda: _client.models.generate_content(
+        resp = call_with_retry(lambda: _client().models.generate_content(
             model=UTILITY_MODEL,
             contents=HYDE_PROMPT.format(question=question),
+            config=_UTILITY_CONFIG,
         ))
         record_usage(getattr(resp, "usage_metadata", None))
         return resp.text or ""
 
     def embed(text: str) -> np.ndarray:
-        result = call_with_retry(lambda: _client.models.embed_content(
+        result = call_with_retry(lambda: _client().models.embed_content(
             model=EMBEDDING_MODEL,
             contents=text,
             config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=dim),
@@ -198,7 +218,7 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
     image_bytes = resize_image_if_needed(image_bytes, mime_type)
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = call_with_retry(lambda: _client.models.embed_content(
+        result = call_with_retry(lambda: _client().models.embed_content(
             model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
@@ -208,7 +228,7 @@ def embed_image(image_bytes: bytes, mime_type: str = "image/png") -> np.ndarray 
         record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
-        st.error(f"Embedding error: {e}")
+        _report(e)
         return None
 
 
@@ -218,7 +238,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
     """
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = call_with_retry(lambda: _client.models.embed_content(
+        result = call_with_retry(lambda: _client().models.embed_content(
             model=EMBEDDING_MODEL,
             contents=types.Content(
                 parts=[
@@ -231,7 +251,7 @@ def embed_image_with_caption(image_bytes: bytes, caption: str, mime_type: str = 
         record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
-        st.error(f"Embedding error: {e}")
+        _report(e)
         return None
 
 
@@ -239,7 +259,7 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
     """Embed a single PDF chunk using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = call_with_retry(lambda: _client.models.embed_content(
+        result = call_with_retry(lambda: _client().models.embed_content(
             model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
@@ -249,7 +269,7 @@ def embed_pdf(pdf_bytes: bytes) -> list[np.ndarray]:
         record_usage(getattr(result, "usage_metadata", None))
         return [np.array(e.values) for e in result.embeddings]
     except Exception as e:
-        st.error(f"PDF embedding error: {e}")
+        _report(e)
         return []
 
 
@@ -257,7 +277,7 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
     """Embed an audio file using Gemini Embedding 2."""
     dim = st.session_state.get("embedding_dim", 3072)
     try:
-        result = call_with_retry(lambda: _client.models.embed_content(
+        result = call_with_retry(lambda: _client().models.embed_content(
             model=EMBEDDING_MODEL,
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
@@ -267,5 +287,5 @@ def embed_audio(audio_bytes: bytes, mime_type: str) -> np.ndarray | None:
         record_usage(getattr(result, "usage_metadata", None))
         return np.array(result.embeddings[0].values)
     except Exception as e:
-        st.error(f"Audio embedding error: {e}")
+        _report(e)
         return None

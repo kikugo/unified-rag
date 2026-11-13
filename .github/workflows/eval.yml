@@ -32,7 +32,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest ruff
+        run: pip install -r requirements-eval.txt pytest ruff
       - name: Ruff
         run: ruff check .
       - name: Pytest
@@ -55,7 +55,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-eval.txt
 
       - name: Check secrets
         run: |

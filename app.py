@@ -2,7 +2,6 @@ import base64
 import io
 import logging
 import os
-import re
 import tempfile
 import time
 import uuid
@@ -42,6 +41,17 @@ from app.guard import (
     friendly_error,
     image_too_large,
     js_string_literal,
+)
+from app.ui import (
+    SAMPLE_ANSWER,
+    SAMPLE_QUESTION,
+    SAMPLE_SOURCES,
+    UPLOAD_TYPES,
+    ingest_fraction,
+    md_escape,
+    plural,
+    quota_fraction,
+    quota_text,
 )
 from media_ingest import (
     VIDEO_MAX_SECONDS,
@@ -119,6 +129,29 @@ st.markdown(
     "Ask one question across PDFs, images, audio and video. Every answer cites the "
     "page, frame or clip it came from, so you can open the source and check it."
 )
+
+# Input fields need a visible edge. The theme's borderColor also draws containers and
+# dividers and sits under 3:1, so only fields get a border mixed from the text colour:
+# 55% clears 3:1 in both themes. Focused fields keep Streamlit's primary-colour border.
+st.html("""
+<style>
+[data-baseweb="input"]:not(:focus-within),
+[data-baseweb="textarea"]:not(:focus-within),
+[data-baseweb="select"] > div:not(:focus-within),
+[data-testid="stChatInput"] > div:not(:focus-within),
+[data-testid="stFileUploaderDropzone"] {
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent) !important;
+}
+</style>
+""")
+
+# Demo quota meter, filled at the end of the run so it counts this run's calls.
+quota_slot = st.empty()
+
+# What the last batch of uploads did. It is shown here rather than in the sidebar,
+# which is closed on a phone.
+for _kind, _text in st.session_state.pop("ingest_report", []):
+    getattr(st, _kind)(_text)
 
 AVATARS = {"user": ":material/person:", "assistant": ":material/find_in_page:"}
 
@@ -241,6 +274,10 @@ def start_new_corpus():
 # sidebar: the library (add, browse, delete), image search, settings, key
 SAMPLE_CHARTS_HELP = ("Six Q4 2024 earnings charts (Tesla, Netflix, Nike, Google, Accenture, "
                       "Tencent), enough to try a question in a few seconds.")
+DEMO_LIMITS_TEXT = (f"Demo limits: {UPLOAD_LIMITS.max_mb} MB per file, "
+                    f"{UPLOAD_LIMITS.max_pdf_pages} PDF pages, "
+                    f"{UPLOAD_LIMITS.max_audio_seconds // 60} min audio, "
+                    f"{UPLOAD_LIMITS.max_video_seconds // 60} min video.")
 
 
 def api_key_input() -> str:
@@ -272,16 +309,13 @@ with st.sidebar:
     st.subheader("Add sources")
     uploaded_files = st.file_uploader(
         "Files",
-        type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "mp4", "mov"],
+        type=UPLOAD_TYPES,
         accept_multiple_files=True,
         label_visibility="collapsed",
         max_upload_size=UPLOAD_LIMITS.max_mb,
     )
     if DEMO_MODE:
-        st.caption(f"Demo limits: {UPLOAD_LIMITS.max_mb} MB per file, "
-                   f"{UPLOAD_LIMITS.max_pdf_pages} PDF pages, "
-                   f"{UPLOAD_LIMITS.max_audio_seconds // 60} min audio, "
-                   f"{UPLOAD_LIMITS.max_video_seconds // 60} min video.")
+        st.caption(DEMO_LIMITS_TEXT)
 
     # Show ingest options only for the file types actually selected, so a PDF
     # upload isn't buried under image-caption and audio fields.
@@ -1045,51 +1079,63 @@ if st.session_state.load_samples_requested:
 if _flash := st.session_state.pop("flash", None):
     st.toast(_flash, icon=":material/library_add_check:")
 
-# process uploads from sidebar. Each uploaded file is attempted once: the
-# uploader keeps its files across reruns, so without the attempted set a file
-# that failed (or was deleted from the library) was embedded again on every
-# click anywhere in the app.
-new_uploads = [f for f in (uploaded_files or []) if f.file_id not in st.session_state.attempted_uploads]
+# process uploads. Each uploaded file is attempted once: the uploader keeps its files
+# across reruns, so without the attempted set a file that failed (or was deleted from
+# the library) was embedded again on every click anywhere in the app.
+# The empty library also has an uploader in the main column, drawn further down, so its
+# files are read from session state here.
+main_uploads = st.session_state.get("main_uploader") or []
+new_uploads = [f for f in [*(uploaded_files or []), *main_uploads]
+               if f.file_id not in st.session_state.attempted_uploads]
 if new_uploads:
     per_file_captions = parse_caption_map(image_captions_map_raw)
     # Dedup by content hash so re-uploads (and server reloads) don't re-embed the
     # same bytes, even if the filename changed.
     existing_hashes = {s.get("content_hash") for s in st.session_state.doc_sources if s.get("content_hash")}
 
-    progress = st.sidebar.progress(0, text="Embedding…")
-    added = 0
-    skipped = 0
+    # Progress per file, in the main column where a phone can see it.
     total = len(new_uploads)
+    report: list[tuple[str, str]] = []
+    status = st.status(f"Adding {plural(total, 'file')}…", expanded=True, state="running")
+    with status:
+        bar = st.progress(0.0)
+        lines = [st.empty() for _ in new_uploads]
+    for _line, _file in zip(lines, new_uploads):
+        _line.caption(f"{md_escape(_file.name)} · waiting")
+
+    def show(i: int, text: str, step: int = 0, steps: int = 0):
+        lines[i].markdown(f":material/progress_activity: **{md_escape(new_uploads[i].name)}** · {text}")
+        bar.progress(ingest_fraction(i, total, step, steps))
+
+    def finish(i: int, text: str, ok: bool = True):
+        icon = ":material/check_circle:" if ok else ":material/block:"
+        lines[i].markdown(f"{icon} **{md_escape(new_uploads[i].name)}** · {text}")
+        bar.progress(ingest_fraction(i + 1, total))
+        if not ok:
+            report.append(("warning", f"Skipped {new_uploads[i].name}: {text}."))
+
+    added = 0
     for i, file in enumerate(new_uploads):
         st.session_state.attempted_uploads.add(file.file_id)
         file_bytes = file.getvalue()
         mime = file.type or ""
         content_hash = hash_bytes(file_bytes)
         if content_hash in existing_hashes:
-            skipped += 1
-            progress.progress((i + 1) / total, text=f"Skipped {file.name} (already indexed)")
+            finish(i, "already in your library", ok=False)
             continue
         if DEMO_MODE and not within_demo_upload_cap(
             current=st.session_state.demo_uploads_this_session, limit=MAX_UPLOADS_PER_SESSION
         ):
-            skipped += 1
-            st.sidebar.warning(
-                f"Demo limit: {MAX_UPLOADS_PER_SESSION} files per session. "
-                "Clone the repo to run it without limits."
-            )
-            progress.progress((i + 1) / total, text=f"Skipped {file.name} (demo limit reached)")
+            finish(i, f"the demo takes {MAX_UPLOADS_PER_SESSION} files per session. "
+                      "Clone the repo to run it without limits", ok=False)
             continue
         if budget_spent():
-            skipped += 1
-            st.sidebar.warning(BUDGET_SPENT_MSG)
-            progress.progress((i + 1) / total, text=f"Skipped {file.name} (demo budget spent)")
+            finish(i, "the demo budget for today is spent", ok=False)
             continue
         # Size, pages, duration and pixels are checked from headers, before any decoding.
         refusal = check_upload(file_bytes, mime, UPLOAD_LIMITS)
         if refusal:
-            skipped += 1
-            st.sidebar.warning(f"Skipped {file.name}: {refusal}.")
-            progress.progress((i + 1) / total, text=f"Skipped {file.name}")
+            finish(i, refusal, ok=False)
             continue
         existing_hashes.add(content_hash)
         st.session_state.demo_uploads_this_session += 1
@@ -1097,9 +1143,14 @@ if new_uploads:
 
         try:
             if retrieval_strategy == "Managed RAG (Google File Search)":
+                show(i, "uploading to Google File Search…")
                 add_file_to_google_store(file.name, file_bytes, mime, content_hash=content_hash)
+                done_text = "uploaded to Google File Search"
             elif mime == "application/pdf":
-                for chunk_bytes, page_label, preview_png in chunk_pdf(file_bytes):
+                show(i, "splitting pages…")
+                pdf_chunks = chunk_pdf(file_bytes)
+                for j, (chunk_bytes, page_label, preview_png) in enumerate(pdf_chunks):
+                    show(i, f"embedding {page_label} ({j + 1} of {len(pdf_chunks)})", j, len(pdf_chunks))
                     chunk_text = extract_pdf_text(chunk_bytes)
                     for emb in embed_pdf(chunk_bytes):
                         add_document(emb, f"{file.name} · {page_label}", "pdf", mime, chunk_bytes,
@@ -1107,10 +1158,13 @@ if new_uploads:
                                      searchable_text=f"{file.name} {page_label}\n{chunk_text}",
                                      source_meta={"page_range": page_label},
                                      content_hash=content_hash, source_id=file_source_id)
+                done_text = f"{plural(len(pdf_chunks), 'page group')} indexed"
             elif mime in ("audio/mpeg", "audio/mp3", "audio/wav"):
+                show(i, "splitting audio…")
                 audio_mime = "audio/mp3" if mime == "audio/mpeg" else mime
                 audio_chunks = chunk_audio_bytes(file_bytes, audio_mime)
-                for chunk_bytes, start_sec, end_sec, chunk_mime in audio_chunks:
+                for j, (chunk_bytes, start_sec, end_sec, chunk_mime) in enumerate(audio_chunks):
+                    show(i, f"clip {j + 1} of {len(audio_chunks)}", j, len(audio_chunks))
                     emb = embed_audio(chunk_bytes, mime_type=chunk_mime)
                     if emb is not None:
                         label = f"{file.name} · {format_timestamp(start_sec)}-{format_timestamp(end_sec)}"
@@ -1135,17 +1189,22 @@ if new_uploads:
                             content_hash=content_hash,
                             source_id=file_source_id,
                         )
+                done_text = f"{plural(len(audio_chunks), 'clip')} indexed"
             elif mime in ("video/mp4", "video/quicktime"):
+                show(i, "extracting frames…")
                 duration = get_video_duration_seconds(file_bytes)
                 if duration is not None and duration > VIDEO_MAX_SECONDS:
-                    st.sidebar.info(f"{file.name} is long, so frames are sampled at a wider interval.")
+                    report.append(("info", f"{file.name} is long, so frames are sampled at a wider interval."))
                 stored_video_path = persist_blob(file_bytes, mime, file.name, corpus_id=blob_namespace())
                 interval = choose_frame_interval(duration)
                 frames = extract_video_frames(file_bytes, interval_sec=interval)
                 if scene_sampling:
                     frames = select_scene_frames(frames)
+                if transcribe_audio:
+                    show(i, "transcribing the soundtrack…")
                 transcript_windows = transcribe_video_audio(file_bytes) if transcribe_audio else []
-                for frame_png, ts in frames:
+                for j, (frame_png, ts) in enumerate(frames):
+                    show(i, f"frame {j + 1} of {len(frames)}", j, len(frames))
                     emb = embed_image(frame_png, mime_type="image/png")
                     if emb is not None:
                         ts_label = format_timestamp(ts)
@@ -1172,11 +1231,14 @@ if new_uploads:
                             content_hash=content_hash,
                             source_id=file_source_id,
                         )
+                done_text = f"{plural(len(frames), 'frame')} indexed"
             else:
                 norm_bytes, norm_mime = normalize_image(file_bytes, mime)
                 cap = per_file_captions.get(file.name, image_caption)
                 if not cap and auto_caption_images:
+                    show(i, "captioning…", 0, 2)
                     cap = auto_caption_image(norm_bytes, norm_mime)
+                show(i, "embedding…", 1, 2)
                 if cap:
                     emb = embed_image_with_caption(norm_bytes, caption=cap, mime_type=norm_mime)
                 else:
@@ -1187,23 +1249,28 @@ if new_uploads:
                                  searchable_text=build_image_searchable_text(file.name, cap or ""),
                                  source_meta={"caption": cap or ""},
                                  content_hash=content_hash, source_id=file_source_id)
+                done_text = "indexed"
 
         except DemoBudgetExceeded:
-            st.sidebar.warning(BUDGET_SPENT_MSG)
+            finish(i, "the demo budget ran out while adding it", ok=False)
+            report.append(("warning", BUDGET_SPENT_MSG))
             break
         except Exception:
             log.exception("ingesting %s failed", file.name)
-            st.sidebar.error(f"{file.name} could not be processed. Try another file.")
+            lines[i].markdown(f":material/error: **{md_escape(file.name)}** · could not be processed")
+            report.append(("error", f"{file.name} could not be processed. Try another file."))
             continue
 
         added += 1
-        progress.progress((i + 1) / total, text=f"Processed {file.name}")
+        finish(i, done_text)
 
-    progress.empty()
+    status.update(label=f"Added {plural(added, 'file')}", state="complete", expanded=False)
     if added:
-        st.sidebar.success(f"Added {added} file(s).")
-    if skipped:
-        st.sidebar.info(f"Skipped {skipped} file(s).")
+        report.insert(0, ("success", f"Added {plural(added, 'file')} to your library."))
+    # Rerun so the sidebar library, drawn earlier in this run, lists the new files, and the
+    # empty-library panel (with its uploader) gives way to the chat.
+    st.session_state.ingest_report = report
+    st.rerun()
 
 def _seek_seconds(value) -> int:
     """Coerce a stored timestamp into an int start_time for st.audio/st.video."""
@@ -1233,14 +1300,6 @@ def stream_answer(chunks) -> str:
             slot.markdown(mark_citations(text))
     slot.markdown(mark_citations(text))
     return text
-
-
-_MD_SPECIAL = re.compile(r"([\\`*_\[\]#|~<>])")
-
-
-def _md_escape(text: str) -> str:
-    """Escape a file name so underscores or brackets in it don't turn into markdown."""
-    return _MD_SPECIAL.sub(r"\\\1", text)
 
 
 def _display_name_and_locator(res: dict) -> tuple[str, str]:
@@ -1283,7 +1342,7 @@ def render_evidence(results, show_score=False, with_video=True):
         with cols[i % ncols], st.container(border=True):
             render_thumbnail(res)
             chip = f":yellow-background[**{res['citation_id']}**] " if res.get("citation_id") else ""
-            st.markdown(f"{chip}{_md_escape(name)}")
+            st.markdown(f"{chip}{md_escape(name)}")
             detail = locator
             if show_score:
                 detail += f", similarity {res.get('score', 0):.3f}"
@@ -1311,7 +1370,7 @@ def render_source_inline(res: dict, with_video: bool = True):
         st.video(res["video_bytes"], start_time=seek)
     if res.get("searchable_text") and rtype in ("pdf", "audio", "video_frame"):
         with st.container(height=180, border=False):
-            st.caption(_md_escape(res["searchable_text"]))
+            st.caption(md_escape(res["searchable_text"]))
 
 
 def render_answer_footer(text: str, citations: list[str], prompt_tokens: int, usage, key: str):
@@ -1347,19 +1406,48 @@ Managed mode hands the files to Google File Search instead.
 """)
 
 
+def render_sample_answer():
+    """A recorded answer over the sample charts, so the demo shows its output for free."""
+    with st.container(border=True):
+        st.markdown("**Example: a question over the sample charts**")
+        st.caption("Answered earlier and saved, so reading it costs nothing.")
+        with st.chat_message("user", avatar=AVATARS["user"]):
+            st.markdown(SAMPLE_QUESTION)
+        with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+            st.markdown(mark_citations(SAMPLE_ANSWER))
+            st.caption("Retrieved: " + "; ".join(
+                f"S{n} {name}" for n, name in enumerate(SAMPLE_SOURCES, start=1)))
+        if st.button("Load the charts and ask it live", key="sample_ask_live",
+                     icon=":material/play_arrow:", type="tertiary"):
+            st.session_state.load_samples_requested = True
+            st.session_state.pending_query = SAMPLE_QUESTION
+            st.rerun()
+
+
 if not st.session_state.doc_sources:
     with st.container(border=True):
         st.subheader("Your library is empty")
         st.markdown(
-            "Add PDFs, images, audio or video from the sidebar. Each file is split into pages, "
-            "frames or clips and embedded into one index, so a single question searches all of them."
+            "Add PDFs, images, audio or video. Each file is split into pages, frames or clips "
+            "and embedded into one index, so a single question searches all of them."
         )
-        st.caption("PDF, PNG, JPG, MP3, WAV, MP4 and MOV")
+        # Its files are picked up by the upload step above, on the rerun this triggers.
+        st.file_uploader(
+            "Add files",
+            type=UPLOAD_TYPES,
+            accept_multiple_files=True,
+            key="main_uploader",
+            label_visibility="collapsed",
+            max_upload_size=UPLOAD_LIMITS.max_mb,
+        )
+        st.caption(DEMO_LIMITS_TEXT if DEMO_MODE else "PDF, PNG, JPG, MP3, WAV, MP4 and MOV")
         wc1, wc2 = st.columns([2, 3], vertical_alignment="center")
         if wc1.button("Load 6 sample charts", key="welcome_load_samples", type="primary", width="stretch"):
             st.session_state.load_samples_requested = True
             st.rerun()
         wc2.caption(SAMPLE_CHARTS_HELP)
+    if DEMO_MODE:
+        render_sample_answer()
 else:
     top_k = st.session_state.get("top_k", 3)  # set in the sidebar Settings expander
 
@@ -1535,6 +1623,15 @@ if run_img_query and query_image_sidebar and not _img_refusal:
 
 # Running token total for the session — rendered last so it reflects this run's calls.
 st.sidebar.caption(f"Session usage: {st.session_state.get('session_tokens', 0):,} tokens")
+
+# The demo key's daily budget, drawn into the slot under the intro.
+if BUDGETED:
+    _budget = get_demo_budget()
+    _left = _budget.remaining()
+    with quota_slot.container():
+        st.progress(quota_fraction(_left, _budget.limit), text=quota_text(_left, _budget.limit))
+        st.caption("Shared by every visitor today. A question takes a few calls; a file takes one or "
+                   "two per image, page group, clip or frame. Your own key (sidebar, API key) is not counted.")
 
 render_about()
 st.caption(f"Unified RAG, built on Gemini Embedding 2 and {MANAGED_ANSWER_MODEL}.")

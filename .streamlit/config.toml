@@ -34,7 +34,8 @@ secondaryBackgroundColor = "#e3e9e5"
 borderColor = "#d0d8d3"
 
 [theme.dark]
-primaryColor = "#2f6f91"
+# 3.8:1 on the page and 4.6:1 under the white primary-button text; #2f6f91 was 3.2:1.
+primaryColor = "#347ca2"
 backgroundColor = "#141a1e"
 secondaryBackgroundColor = "#1f282d"
 textColor = "#e2e8ea"
